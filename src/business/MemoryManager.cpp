@@ -14,7 +14,10 @@ MemoryManager& MemoryManager::Instance() {
 }
 
 std::vector<uint8_t> MemoryManager::Read(uint64_t address, size_t size) {
-    if (!DebugController::Instance().IsPaused()) {
+    // Reading memory uses ReadProcessMemory under the hood, which works on
+    // a running debuggee. Requiring only IsDebugging() matches x64dbg GUI
+    // behavior (Memory Map / Dump panes remain usable while running).
+    if (!DebugController::Instance().IsDebugging()) {
         throw DebuggerNotPausedException();
     }
     
@@ -113,7 +116,9 @@ std::vector<MemorySearchResult> MemoryManager::Search(
     uint64_t endAddress,
     size_t maxResults)
 {
-    if (!DebugController::Instance().IsPaused()) {
+    // Search is read-only memory traversal — same rationale as Read():
+    // does not require the debuggee to be paused.
+    if (!DebugController::Instance().IsDebugging()) {
         throw DebuggerNotPausedException();
     }
     

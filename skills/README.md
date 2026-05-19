@@ -38,14 +38,14 @@ claude --plugin-dir path/to/x64dbg-mcp/skills
 ## Prerequisites
 
 1. **x64dbg** with the MCP server plugin installed and running
-2. **Claude Code** with MCP server configured:
+2. **Claude Code** with MCP server configured (recommended — Streamable HTTP):
 
 ```json
 {
   "mcpServers": {
     "x64dbg": {
-      "url": "http://127.0.0.1:3000",
-      "transport": "sse"
+      "type": "http",
+      "url": "http://127.0.0.1:3000/mcp"
     }
   }
 }
@@ -134,14 +134,14 @@ claude --plugin-dir path/to/x64dbg-mcp/skills
 ## 前提条件
 
 1. 安装了 MCP 服务器插件的 **x64dbg**，且已启动
-2. **Claude Code** 已配置 MCP 服务器：
+2. **Claude Code** 已配置 MCP 服务器（推荐 — Streamable HTTP）：
 
 ```json
 {
   "mcpServers": {
     "x64dbg": {
-      "url": "http://127.0.0.1:3000",
-      "transport": "sse"
+      "type": "http",
+      "url": "http://127.0.0.1:3000/mcp"
     }
   }
 }

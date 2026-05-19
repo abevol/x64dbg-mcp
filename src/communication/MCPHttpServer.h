@@ -66,9 +66,16 @@ private:
     
     // 处理 SSE 连接
     void HandleSSE(SOCKET clientSocket);
-    
+
     // 处理 POST 消息
     void HandlePostMessage(SOCKET clientSocket, const std::string& body);
+
+    // Streamable HTTP transport (MCP 2025-03-26) — single endpoint /mcp.
+    // POST returns the JSON-RPC response inline as application/json.
+    // GET opens a long-lived SSE stream used only for server-to-client pushes
+    // (no endpoint event handshake, unlike the legacy /sse transport).
+    void HandleStreamableHttpPost(SOCKET clientSocket, const std::string& body);
+    void HandleStreamableHttpStream(SOCKET clientSocket);
     
     // 处理 MCP 方法调用
     std::string HandleMCPMethod(const std::string& method, const std::string& requestId, const std::string& body);
