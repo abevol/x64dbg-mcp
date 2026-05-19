@@ -14,7 +14,7 @@ A Model Context Protocol (MCP) server implementation for x64dbg and x32dbg, enab
   - **Prompts (10)**: User-guided debugging workflow templates
   
 - **JSON-RPC 2.0 Protocol**: Standard, language-agnostic interface
-- **HTTP + SSE Communication**: Modern web-based integration via Server-Sent Events
+- **Streamable HTTP transport** (MCP 2025-03-26) on `/mcp`, plus legacy HTTP+SSE on `/sse` for older clients
 
 - **Tools - AI-Controlled Debugging (79 functions)**: 
   - Execution control (init/run/pause/step/run_to/restart/stop)
@@ -42,12 +42,18 @@ A Model Context Protocol (MCP) server implementation for x64dbg and x32dbg, enab
 - **Security**: Permission-based access control
 - **Extensible**: Plugin architecture for custom methods, resources, and prompts
 
-## What's New in v1.0.6
+## What's New in v1.0.7
+
+- **Streamable HTTP transport (MCP 2025-03-26)**: new unified `/mcp` endpoint supporting POST/GET/DELETE. POST returns the JSON-RPC response inline as `application/json`; GET opens an SSE stream for server-initiated notifications. Recommended over the deprecated SSE transport — configure clients with `"type": "http"` and `"url": "http://127.0.0.1:3000/mcp"`.
+- **HTTP+SSE transport spec compliance fixed**: `GET /sse` now sends the required `event: endpoint` handshake; `POST /message` now ACKs with `202 Accepted` and delivers the JSON-RPC response back over the SSE channel as `event: message`. Legacy SSE clients now work end-to-end again.
+- **Memory read/search no longer require a paused debuggee** (#8). `memory_read` and `memory_search` work while the target is running, matching the x64dbg GUI's Memory Map / Dump panes. `memory_write` still requires a paused debuggee.
+
+## Previous Versions
+
+### v1.0.6
 
 - **New Tool**: `debug_init` — starts a new debug session by loading an executable (equivalent to x64dbg's "Run" button). Works even when no session is active, so the bot can relaunch the target after a crash/exit without a reconnect. Accepts optional `path`, `arguments`, and `current_dir`; when `path` is omitted the most recently observed debuggee path is reused.
 - `debug_restart` no longer requires an active debug session — it now falls back to the cached debuggee path, so it can revive a session after the target exits or crashes.
-
-## Previous Versions
 
 ### v1.0.5
 
@@ -213,7 +219,7 @@ Edit `config.json` to customize settings:
 
 ```json
 {
-  "version": "1.0.6",
+  "version": "1.0.7",
   "server": {
     "address": "127.0.0.1",
     "port": 3000
@@ -288,14 +294,27 @@ Cursor and other MCP clients usually decide which sections to show from the `ini
 
 ### VS Code Integration
 
-Configure in VS Code settings or MCP client config:
+Configure in VS Code settings or MCP client config. Recommended (Streamable HTTP, MCP 2025-03-26):
 
 ```json
 {
   "mcpServers": {
     "x64dbg": {
-      "url": "http://127.0.0.1:3000",
-      "transport": "sse"
+      "type": "http",
+      "url": "http://127.0.0.1:3000/mcp"
+    }
+  }
+}
+```
+
+Legacy HTTP+SSE clients (use the `/sse` path, not the root):
+
+```json
+{
+  "mcpServers": {
+    "x64dbg": {
+      "type": "sse",
+      "url": "http://127.0.0.1:3000/sse"
     }
   }
 }

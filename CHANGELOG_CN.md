@@ -5,6 +5,25 @@ x64dbg MCP Server Plugin 的所有重要变更都会记录在此文件中。
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并采用 [Semantic Versioning](https://semver.org/spec/v2.0.0.html)。
 
+## [1.0.7] - 2026-05-19
+
+### 新增
+- **Streamable HTTP 传输（MCP 2025-03-26 规范）** — 全新统一端点 `/mcp`：
+  - `POST /mcp`：JSON-RPC 响应以 `application/json` 内联返回（notification 返回 `202 Accepted`）。
+  - `GET /mcp`：长连 SSE 流，仅用于服务端主动推送事件通知（无 endpoint 握手）。
+  - `DELETE /mcp`：返回 `405 Method Not Allowed`（无状态服务，不支持会话终止）。
+  - 推荐取代已被 MCP 官方废弃的旧 SSE Transport。客户端配置为 `"type": "http"`、`"url": "http://127.0.0.1:3000/mcp"`。
+
+### 修复
+- **MCP HTTP+SSE Transport 握手缺陷**：
+  - `GET /sse` 现在会在发送 HTTP 头之后立即推送规范要求的 `event: endpoint` 握手事件。此前缺失这一步，客户端永远等不到 endpoint 通告而超时。
+  - `POST /message` 现在按 MCP HTTP+SSE 规范返回 `202 Accepted`（空 body），实际的 JSON-RPC 响应通过 SSE 通道以 `event: message` 推回。当没有 SSE 客户端附着时，回退到 inline `200 OK + JSON`，保证 `curl` 等纯 HTTP 工具继续可用。
+- **内存读取/搜索不再要求被调试进程处于暂停状态**（#8）。`memory.read` 与 `memory.search` 的前置条件由 `IsPaused()` 放宽为 `IsDebugging()`。`ReadProcessMemory` 与模式扫描在目标运行态下本就是合法操作 —— 这与 x64dbg GUI 中 Memory Map / Dump 面板在运行态下可用的行为一致。`memory.write` 仍要求暂停以避免与指令流的竞态。
+- HTTP 状态码 reason phrase 规范化：`202` 现在显示为 `Accepted`（此前为 `OK`），新增 `405 Method Not Allowed`。
+
+### 变更
+- MCP 服务器在 `initialize` 应答中的 `serverInfo.version` 现在与插件版本（1.0.7）保持一致。
+
 ## [1.0.6] - 2026-04-29
 
 ### 新增

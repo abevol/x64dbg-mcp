@@ -14,7 +14,7 @@
   - **Prompts（10）**：用户引导的调试工作流模板
 
 - **JSON-RPC 2.0 协议**：标准、语言无关的接口
-- **HTTP + SSE 通信**：通过 Server-Sent Events 提供现代 Web 集成
+- **Streamable HTTP 传输**（MCP 2025-03-26 规范）端点 `/mcp`，并保留旧版 HTTP+SSE 端点 `/sse` 兼容老客户端
 
 - **Tools - AI 可控调试（79 个函数）**：
   - 执行控制（init/run/pause/step/run_to/restart/stop）
@@ -42,12 +42,18 @@
 - **安全性**：基于权限的访问控制
 - **可扩展性**：支持自定义方法、资源与提示的插件架构
 
-## v1.0.6 更新内容
+## v1.0.7 更新内容
+
+- **Streamable HTTP 传输（MCP 2025-03-26 规范）**：新增统一端点 `/mcp`，支持 POST/GET/DELETE。POST 以 `application/json` 内联返回 JSON-RPC 响应；GET 开启 SSE 流用于服务端主动推送通知。推荐取代已被官方废弃的 SSE Transport，客户端配置为 `"type": "http"`、`"url": "http://127.0.0.1:3000/mcp"`。
+- **修复 HTTP+SSE 传输协议合规性**：`GET /sse` 现在会发送规范要求的 `event: endpoint` 握手；`POST /message` 现在按规范返回 `202 Accepted` 并通过 SSE 通道以 `event: message` 推回 JSON-RPC 响应。旧 SSE 客户端现已可以端到端正常工作。
+- **内存读取/搜索不再要求暂停**（#8）。`memory_read` 与 `memory_search` 现在在目标运行态下也可调用，与 x64dbg GUI 中 Memory Map / Dump 面板的行为一致。`memory_write` 仍要求暂停。
+
+## 历史版本
+
+### v1.0.6
 
 - **新增工具 `debug_init`**：通过加载可执行文件启动新的调试会话（对应 x64dbg 的 "Run" 按钮）。即使当前没有活动会话也能使用，便于目标进程崩溃/退出后，让 AI 无需重连即可重新拉起被调试进程。参数均为可选：`path`、`arguments`、`current_dir`；`path` 为空时会复用最近一次捕获到的目标路径。
 - `debug_restart` 不再要求处于调试中状态 —— 当被调试进程已经退出/崩溃时，会回退到缓存的目标路径，从而可以恢复会话。
-
-## 历史版本
 
 ### v1.0.5
 
@@ -202,7 +208,7 @@ copy config.json <x64dbg-path>\x32\plugins\x32dbg-mcp\
 
 ```json
 {
-  "version": "1.0.6",
+  "version": "1.0.7",
   "server": {
     "address": "127.0.0.1",
     "port": 3000
@@ -283,8 +289,21 @@ Cursor 以及其他 MCP 客户端通常会根据 `initialize` 返回的 capabili
 {
   "mcpServers": {
     "x64dbg": {
-      "url": "http://127.0.0.1:3000",
-      "transport": "sse"
+      "type": "http",
+      "url": "http://127.0.0.1:3000/mcp"
+    }
+  }
+}
+```
+
+旧版 HTTP+SSE 客户端（注意是 `/sse` 路径，不是根路径）：
+
+```json
+{
+  "mcpServers": {
+    "x64dbg": {
+      "type": "sse",
+      "url": "http://127.0.0.1:3000/sse"
     }
   }
 }

@@ -5,6 +5,25 @@ All notable changes to the x64dbg MCP Server Plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.7] - 2026-05-19
+
+### Added
+- **Streamable HTTP transport (MCP 2025-03-26)** — new unified `/mcp` endpoint:
+  - `POST /mcp` returns the JSON-RPC response inline as `application/json` (or `202 Accepted` for notifications).
+  - `GET /mcp` opens a long-lived SSE stream used solely for server-initiated notifications (no endpoint handshake).
+  - `DELETE /mcp` returns `405 Method Not Allowed` (stateless server, no session termination).
+  - Recommended over the legacy SSE transport, which has been deprecated by MCP upstream. Configure clients with `"type": "http"` and `"url": "http://127.0.0.1:3000/mcp"`.
+
+### Fixed
+- **MCP HTTP+SSE transport handshake was broken**:
+  - `GET /sse` now sends the mandatory `event: endpoint` event immediately after the HTTP headers. Without it, clients waited forever for the announcement.
+  - `POST /message` now acknowledges with `202 Accepted` (empty body) and delivers the JSON-RPC response via the SSE channel as `event: message`, matching the MCP HTTP+SSE specification. A fallback inline `200 OK + JSON` reply is still returned when no SSE client is attached (so plain HTTP/JSON-RPC tooling like `curl` keeps working).
+- **Memory read/search no longer require the debuggee to be paused** (#8). `memory.read` and `memory.search` now require only `IsDebugging()` instead of `IsPaused()`. `ReadProcessMemory` and pattern scanning work fine against a running target — matching the behavior of the x64dbg GUI's Memory Map and Dump panes. `memory.write` still requires a paused debuggee to avoid races with the instruction stream.
+- HTTP status reason phrases are now standards-compliant: `202` is reported as `Accepted` (was `OK`); `405 Method Not Allowed` added.
+
+### Changed
+- The MCP server's `serverInfo.version` reported during `initialize` now matches the plugin version (1.0.7).
+
 ## [1.0.6] - 2026-04-29
 
 ### Added
