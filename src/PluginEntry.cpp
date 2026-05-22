@@ -27,12 +27,14 @@
 #include "utils/StringUtils.h"
 #include "communication/MCPHttpServer.h"
 #include "ui/ConfigEditor.h"
+#include "_plugins.h"
 #include <windows.h>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 
 // 鎻掍欢鐗堟湰淇℃�?
-#define PLUGIN_VERSION "1.0.7"
+#define PLUGIN_VERSION "1.0.8-attach"
 
 // 鍙�?CMake 瑕嗙洊锛歅LUGIN_DISPLAY_NAME, PLUGIN_DIR_NAME
 #ifndef PLUGIN_DISPLAY_NAME
@@ -426,6 +428,62 @@ static void RegisterAllMethods() {
 /**
  * @brief 娉ㄥ唽鎵€鏈夊洖�?
  */
+namespace MCP {
+
+static uint32_t ParsePidArg(const char* text) {
+    if (text == nullptr || *text == '\0') {
+        return 0;
+    }
+    char* end = nullptr;
+    unsigned long value = 0;
+    if (*text == '.') {
+        value = std::strtoul(text + 1, &end, 10);
+    } else {
+        value = std::strtoul(text, &end, 10);
+    }
+    if (end == text || *end != '\0' || value == 0 || value > UINT32_MAX) {
+        return 0;
+    }
+    return static_cast<uint32_t>(value);
+}
+
+static bool CmdMcpAttach(int argc, char** argv) {
+    if (argc < 2) {
+        return false;
+    }
+    const uint32_t pid = ParsePidArg(argv[1]);
+    if (pid == 0) {
+        return false;
+    }
+    return DebugController::Instance().AttachProcessCore(pid, false, true);
+}
+
+static bool CmdMcpAttachBreak(int argc, char** argv) {
+    if (argc < 2) {
+        return false;
+    }
+    const uint32_t pid = ParsePidArg(argv[1]);
+    if (pid == 0) {
+        return false;
+    }
+    return DebugController::Instance().AttachProcessCore(pid, true, true);
+}
+
+static bool CmdMcpDetach(int argc, char** argv) {
+    (void)argc;
+    (void)argv;
+    return DebugController::Instance().DetachProcessCore();
+}
+
+} // namespace MCP
+
+static void RegisterPluginCommands() {
+    _plugin_registercommand(g_pluginHandle, "mcpattach", MCP::CmdMcpAttach, false);
+    _plugin_registercommand(g_pluginHandle, "mcpattachbreak", MCP::CmdMcpAttachBreak, false);
+    _plugin_registercommand(g_pluginHandle, "mcpdetach", MCP::CmdMcpDetach, false);
+    MCP::Logger::Info("Registered plugin commands: mcpattach, mcpattachbreak, mcpdetach");
+}
+
 static void RegisterCallbacks() {
     _plugin_registercallback(g_pluginHandle, CB_INITDEBUG, MCP::CB_InitDebug);
     _plugin_registercallback(g_pluginHandle, CB_STOPDEBUG, MCP::CB_StopDebug);
@@ -435,7 +493,8 @@ static void RegisterCallbacks() {
     _plugin_registercallback(g_pluginHandle, CB_EXITPROCESS, MCP::CB_ExitProcess);
     _plugin_registercallback(g_pluginHandle, CB_LOADDLL, MCP::CB_LoadDll);
     _plugin_registercallback(g_pluginHandle, CB_UNLOADDLL, MCP::CB_UnloadDll);
-    _plugin_registercallback(g_pluginHandle, CB_MENUENTRY, MCP::CB_MenuEntry);  // 娉ㄥ唽鑿滃崟鍥炶�?
+    _plugin_registercallback(g_pluginHandle, CB_MENUENTRY, MCP::CB_MenuEntry);
+    RegisterPluginCommands();  // 娉ㄥ唽鑿滃崟鍥炶�?
     
     MCP::Logger::Info("All callbacks registered");
 }
@@ -645,6 +704,10 @@ extern "C" __declspec(dllexport) bool pluginit(PLUG_INITSTRUCT* initStruct) {
  */
 extern "C" __declspec(dllexport) void plugstop() {
     MCP::Logger::Info("Plugin stopping...");
+
+    _plugin_unregistercommand(g_pluginHandle, "mcpattach");
+    _plugin_unregistercommand(g_pluginHandle, "mcpattachbreak");
+    _plugin_unregistercommand(g_pluginHandle, "mcpdetach");
     
     // 鍋滄�?MCP HTTP 鏈嶅姟鍣?
     try {

@@ -4,6 +4,7 @@
 #include "../core/Exceptions.h"
 #include "../core/X64DBGBridge.h"
 #include <limits>
+#include <windows.h>
 
 namespace MCP {
 
@@ -332,6 +333,172 @@ bool DebugController::Init(const std::string& path,
     return success;
 }
 
+bool DebugController::DetachProcessCore() {
+    if (!IsDebugging()) {
+        return true;
+    }
+    Logger::Debug("DetachProcessCore: detach/stop");
+    ExecuteCommandDirect("detach");
+    Sleep(200);
+    if (IsDebugging()) {
+        ExecuteCommandDirect("stop");
+        Sleep(200);
+    }
+    return !IsDebugging();
+}
+
+bool DebugController::AttachProcessCore(uint32_t pid, bool useAttachBreak, bool detachFirst) {
+    if (pid == 0) {
+        return false;
+    }
+
+    if (IsDebugging()) {
+        const uint32_t currentPid = GetDebuggeeProcessId();
+        if (currentPid == pid) {
+            Logger::Info("AttachProcessCore: already on pid {}", pid);
+            return true;
+        }
+        if (!detachFirst) {
+            Logger::Error("AttachProcessCore: busy with pid {}, want {}", currentPid, pid);
+            return false;
+        }
+        if (!DetachProcessCore()) {
+            Logger::Error("AttachProcessCore: detach failed");
+            return false;
+        }
+    }
+
+    // x64dbg 命令行整数默认为十六进制；十进制 PID 必须用 ".1234" 形式（见 Values 文档）
+    char command[64] = {};
+    sprintf_s(command, "attach .%u", pid);
+    (void)useAttachBreak;
+
+    Logger::Info("AttachProcessCore: {} (decimal pid)", command);
+    if (!ExecuteCommandDirect(command)) {
+        Logger::Error("AttachProcessCore: direct command failed");
+        return false;
+    }
+
+    return IsDebugging();
+}
+
+bool DebugController::AttachProcess(uint32_t pid,
+                                    uint32_t timeoutMs,
+                                    bool useAttachBreak,
+                                    bool detachIfBusy) {
+    if (pid == 0) {
+        Logger::Error("AttachProcess: invalid pid 0");
+        return false;
+    }
+
+    // 轻量校验：存在即可；真正 OpenProcess(PROCESS_ALL_ACCESS) 在 x64dbg attach 命令内完成
+    HANDLE processHandle = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, pid);
+    if (processHandle == nullptr || processHandle == INVALID_HANDLE_VALUE) {
+        processHandle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    }
+    if (processHandle == nullptr || processHandle == INVALID_HANDLE_VALUE) {
+        Logger::Warning(
+            "AttachProcess: OpenProcess probe failed for pid {} (error {}), trying attach anyway",
+            pid,
+            GetLastError()
+        );
+    } else {
+        DWORD exitCode = STILL_ACTIVE;
+        if (GetExitCodeProcess(processHandle, &exitCode) && exitCode != STILL_ACTIVE) {
+            CloseHandle(processHandle);
+            Logger::Error("AttachProcess: pid {} already exited (code {})", pid, exitCode);
+            return false;
+        }
+        CloseHandle(processHandle);
+    }
+
+    if (IsDebugging()) {
+        const uint32_t currentPid = GetDebuggeeProcessId();
+        if (currentPid == pid) {
+            Logger::Info("AttachProcess: already attached to pid {}", pid);
+            return true;
+        }
+        if (!detachIfBusy) {
+            Logger::Error("AttachProcess: already debugging pid {}, requested {}", currentPid, pid);
+            return false;
+        }
+        Logger::Debug("AttachProcess: detaching before attach");
+        if (!ExecuteCommand("mcpdetach")) {
+            Logger::Error("AttachProcess: mcpdetach enqueue failed");
+            return false;
+        }
+        const uint32_t waitMs = timeoutMs > 0 ? timeoutMs : 15000;
+        auto start = std::chrono::steady_clock::now();
+        while (IsDebugging()) {
+            PumpGuiMessages();
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - start).count();
+            if (elapsed >= waitMs) {
+                Logger::Error("AttachProcess: detach timed out");
+                return false;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    }
+
+    char pluginCmd[32] = {};
+    sprintf_s(pluginCmd, "mcpattach .%u", pid);
+    (void)useAttachBreak;
+    Logger::Info("AttachProcess: queue {}", pluginCmd);
+    if (!ExecuteCommand(pluginCmd)) {
+        Logger::Error("AttachProcess: plugin command enqueue failed");
+        return false;
+    }
+
+    const uint32_t waitMs = timeoutMs > 0 ? timeoutMs : 30000;
+    if (!WaitForDebugging(waitMs)) {
+        Logger::Error("AttachProcess: DbgIsDebugging still false after {} ms", waitMs);
+        return false;
+    }
+
+    // attach 后通常在系统断点暂停；attach_break 仅表示多等一等暂停态
+    if (useAttachBreak && !WaitForPause(waitMs)) {
+        Logger::Warning(
+            "AttachProcess: WaitForPause timed out after {} ms (running={})",
+            waitMs,
+            DbgIsRunning()
+        );
+    }
+
+    const uint32_t attachedPid = GetDebuggeeProcessId();
+    if (attachedPid != 0 && attachedPid != pid) {
+        Logger::Warning("AttachProcess: requested pid {} but debugger reports pid {}", pid, attachedPid);
+    }
+
+    try {
+        Logger::Info(
+            "AttachProcess: ok pid={} rip=0x{:X} state={}",
+            attachedPid != 0 ? attachedPid : pid,
+            GetInstructionPointer(),
+            static_cast<int>(GetState())
+        );
+    } catch (...) {
+        Logger::Info("AttachProcess: ok pid={}", attachedPid != 0 ? attachedPid : pid);
+    }
+
+    return true;
+}
+
+uint32_t DebugController::GetDebuggeeProcessId() const {
+    if (!IsDebugging()) {
+        return 0;
+    }
+
+    duint pid = DbgValFromString("$pid");
+    if (pid == 0) {
+        pid = DbgValFromString("pid");
+    }
+    if (pid == 0 || pid > std::numeric_limits<uint32_t>::max()) {
+        return 0;
+    }
+    return static_cast<uint32_t>(pid);
+}
+
 std::string DebugController::GetLastDebuggedPath() const {
     return LoadLastDebuggedPath();
 }
@@ -382,10 +549,64 @@ bool DebugController::ExecuteCommand(const std::string& command) {
     return result;
 }
 
+bool DebugController::ExecuteCommandDirect(const std::string& command) {
+    Logger::Trace("Executing command (direct): {}", command);
+
+    bool result = DbgCmdExecDirect(command.c_str());
+
+    if (!result) {
+        Logger::Error("Direct command failed: {}", command);
+    }
+
+    return result;
+}
+
+void DebugController::PumpGuiMessages() {
+#ifdef XDBG_SDK_AVAILABLE
+    // Qt 主循环不会仅靠 PeekMessage 推进；刷新 GUI 以处理异步入队的 dbg 命令
+    DbgUpdateGui(0, false);
+
+    HWND hwnd = GuiGetWindowHandle();
+    if (hwnd == nullptr) {
+        return;
+    }
+
+    MSG msg = {};
+    while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
+#endif
+}
+
+bool DebugController::WaitForDebugging(uint32_t timeoutMs) {
+    auto start = std::chrono::steady_clock::now();
+
+    while (true) {
+        PumpGuiMessages();
+
+        if (IsDebugging()) {
+            return true;
+        }
+
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
+
+        if (elapsed >= timeoutMs) {
+            Logger::Warning("Wait for debugging timed out after {} ms", timeoutMs);
+            return false;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+}
+
 bool DebugController::WaitForPause(uint32_t timeoutMs) {
     auto start = std::chrono::steady_clock::now();
     
     while (true) {
+        PumpGuiMessages();
+
         if (IsPaused()) {
             return true;
         }

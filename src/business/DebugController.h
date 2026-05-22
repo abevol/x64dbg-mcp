@@ -96,6 +96,28 @@ public:
               const std::string& currentDir = "");
 
     /**
+     * @brief 附加到已运行的进程（LEProc 冷启 + 注入后的 MAIN_NoCD 等）
+     *
+     * 使用 DbgCmdExec("attach PID") + WaitForPause，并校验 DbgIsDebugging。
+     * 不要用 script_execute attach（无等待、易假成功）。
+     */
+    bool AttachProcess(uint32_t pid,
+                       uint32_t timeoutMs = 15000,
+                       bool useAttachBreak = false,
+                       bool detachIfBusy = true);
+
+    /** 在 x64dbg 命令线程执行的真实 attach（供 mcpattach / mcpattachbreak 调用） */
+    bool AttachProcessCore(uint32_t pid, bool useAttachBreak, bool detachFirst);
+
+    /** 在命令线程 detach/stop（供 mcpdetach 调用） */
+    bool DetachProcessCore();
+
+    /**
+     * @brief 当前被调试进程 PID（来自 x64dbg $pid），未调试时返回 0
+     */
+    uint32_t GetDebuggeeProcessId() const;
+
+    /**
      * @brief 获取上次加载过的调试目标路径
      */
     std::string GetLastDebuggedPath() const;
@@ -128,6 +150,9 @@ private:
     DebugController& operator=(const DebugController&) = delete;
     
     bool ExecuteCommand(const std::string& command);
+    bool ExecuteCommandDirect(const std::string& command);
+    static void PumpGuiMessages();
+    bool WaitForDebugging(uint32_t timeoutMs);
     bool WaitForPause(uint32_t timeoutMs = 5000);
 
     mutable std::mutex m_lastPathMutex;

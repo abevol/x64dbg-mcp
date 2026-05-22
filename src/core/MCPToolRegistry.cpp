@@ -237,6 +237,18 @@ void MCPToolRegistry::RegisterDefaultTools() {
     });
 
     RegisterTool({
+        "debug_attach_pid",
+        "Attach debugger to an already-running process by PID. Uses DbgCmdExec(attach) + WaitForPause + DbgIsDebugging check. Prefer over script_execute('attach'). For PonPon: LEProc start + inject first, x32dbg already open.",
+        "debug.attach_pid",
+        {
+            {"pid", "integer", "Target process ID (e.g. MAIN_NoCD.EXE after inject)", true, nullptr, nullptr},
+            {"timeout_ms", "integer", "Max wait for pause after attach (default 15000)", false, 15000, nullptr},
+            {"attach_break", "boolean", "After attach, wait until paused at system breakpoint (default false)", false, false, nullptr},
+            {"detach_first", "boolean", "Detach/stop current session before attach if busy (default true)", false, true, nullptr}
+        }
+    });
+
+    RegisterTool({
         "debug_stop",
         "Stop debugging and close target process",
         "debug.stop",
