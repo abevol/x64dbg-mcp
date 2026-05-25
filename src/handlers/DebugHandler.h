@@ -67,6 +67,11 @@ public:
     static json Init(const json& params);
 
     /**
+     * @brief debug.attach_pid - 附加到已运行进程（正确等待暂停，非 script_execute）
+     */
+    static json AttachPid(const json& params);
+
+    /**
      * @brief debug.stop - 停止调试
      */
     static json Stop(const json& params);
