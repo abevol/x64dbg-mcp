@@ -34,7 +34,7 @@
 #include <fstream>
 
 // 鎻掍欢鐗堟湰淇℃�?
-#define PLUGIN_VERSION "1.0.8-attach"
+#define PLUGIN_VERSION "1.0.8"
 
 // 鍙�?CMake 瑕嗙洊锛歅LUGIN_DISPLAY_NAME, PLUGIN_DIR_NAME
 #ifndef PLUGIN_DISPLAY_NAME
@@ -435,13 +435,9 @@ static uint32_t ParsePidArg(const char* text) {
         return 0;
     }
     char* end = nullptr;
-    unsigned long value = 0;
-    if (*text == '.') {
-        value = std::strtoul(text + 1, &end, 10);
-    } else {
-        value = std::strtoul(text, &end, 10);
-    }
-    if (end == text || *end != '\0' || value == 0 || value > UINT32_MAX) {
+    errno = 0;
+    const unsigned long value = std::strtoul(text, &end, 10);
+    if (errno == ERANGE || end == text || *end != '\0' || value == 0) {
         return 0;
     }
     return static_cast<uint32_t>(value);

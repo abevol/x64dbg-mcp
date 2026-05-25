@@ -369,9 +369,11 @@ bool DebugController::AttachProcessCore(uint32_t pid, bool useAttachBreak, bool 
     }
 
     // x64dbg 命令行整数默认为十六进制；十进制 PID 必须用 ".1234" 形式（见 Values 文档）
+    // x64dbg 没有 attachbreak 命令；useAttachBreak 仅设置断点等待标记，
+    // 实际的暂停等待由 AttachProcess 中的 WaitForPause 完成。
     char command[64] = {};
     sprintf_s(command, "attach .%u", pid);
-    (void)useAttachBreak;
+    (void)useAttachBreak;  // honored by caller AttachProcess via WaitForPause
 
     Logger::Info("AttachProcessCore: {} (decimal pid)", command);
     if (!ExecuteCommandDirect(command)) {
@@ -563,7 +565,10 @@ bool DebugController::ExecuteCommandDirect(const std::string& command) {
 
 void DebugController::PumpGuiMessages() {
 #ifdef XDBG_SDK_AVAILABLE
-    // Qt 主循环不会仅靠 PeekMessage 推进；刷新 GUI 以处理异步入队的 dbg 命令
+    // CAUTION: This is called from HTTP worker threads during attach polling.
+    // DbgUpdateGui is documented as thread-safe by the x64dbg SDK. PeekMessage
+    // with nullptr HWND dispatches only messages for the calling thread, which
+    // is fine for interop with x64dbg's command queue processing.
     DbgUpdateGui(0, false);
 
     HWND hwnd = GuiGetWindowHandle();
