@@ -14,21 +14,21 @@ ConfigManager& ConfigManager::Instance() {
 json ConfigManager::CreateDefaultConfig() const {
     json config;
     
-    config["version"] = "1.0.7";
+    config["version"] = "1.0.8";
     
     // Server configuration
     config["server"]["address"] = "127.0.0.1";
     config["server"]["port"] = 3000;
     
     // Permissions
-    config["permissions"]["allow_memory_write"] = true;
-    config["permissions"]["allow_register_write"] = true;
-    config["permissions"]["allow_script_execution"] = true;
+    config["permissions"]["allow_memory_write"] = false;
+    config["permissions"]["allow_register_write"] = false;
+    config["permissions"]["allow_script_execution"] = false;
     config["permissions"]["allow_breakpoint_modification"] = true;
     config["permissions"]["allowed_methods"] = json::array({
         "debug.*", "register.*", "memory.*", "breakpoint.*",
         "disasm.*", "disassembly.*", "module.*", "symbol.*",
-        "thread.*", "stack.*", "comment.*", "script.*",
+        "thread.*", "stack.*", "comment.*",
         "context.*", "dump.*", "eval.*", "xref.*",
         "function.*", "assembler.*", "bookmark.*", "patch.*"
     });
@@ -40,6 +40,9 @@ json ConfigManager::CreateDefaultConfig() const {
     config["logging"]["max_file_size_mb"] = 10;
     config["logging"]["console_output"] = true;
     
+    // Security
+    config["security"]["origin_allowlist"] = json::array();
+
     // Timeout
     config["timeout"]["request_timeout_ms"] = 30000;
     config["timeout"]["step_timeout_ms"] = 10000;
@@ -221,6 +224,10 @@ bool ConfigManager::IsRegisterWriteAllowed() const {
 
 bool ConfigManager::IsScriptExecutionAllowed() const {
     return Get<bool>("permissions.allow_script_execution", false);
+}
+
+json ConfigManager::GetOriginAllowlist() const {
+    return Get<json>("security.origin_allowlist", json::array());
 }
 
 std::string ConfigManager::GetLogLevel() const {

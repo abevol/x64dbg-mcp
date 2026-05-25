@@ -5,6 +5,36 @@ x64dbg MCP Server Plugin 的所有重要变更都会记录在此文件中。
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并采用 [Semantic Versioning](https://semver.org/spec/v2.0.0.html)。
 
+## [1.0.8] - 2026-05-22
+
+### 安全
+- **CSRF / DNS-rebinding RCE 漏洞修复**（vonbrubeck 通过邮件报告）：
+  - 所有 POST 端点现在校验 `Origin` 请求头，仅允许已配置白名单（`security.origin_allowlist`，默认为空）中的来源。浏览器发起的跨域 POST 将被默认拦截。
+  - `Host` 请求头现在与配置的绑定地址及已知回环地址（`127.0.0.1`、`localhost`、`::1`）进行校验，防止 DNS-rebinding 攻击。
+  - 移除所有 HTTP 响应中的 `Access-Control-Allow-Origin: *`。
+- 收紧默认权限：
+  - `allow_script_execution` 由 `true` 改为 `false`（RCE 原语改为显式 opt-in）。
+  - `allow_memory_write` 和 `allow_register_write` 由 `true` 改为 `false`。
+  - 从默认 `allowed_methods` 通配符列表中移除 `script.*`。
+- 新增速率限制：POST 端点每秒最多 100 请求（超限返回 HTTP 429）。
+- SSE 累积缓冲区每连接上限 1 MiB（防范内存耗尽 DoS）。
+- Dump 路径穿越防护：`dump.module` 与 `dump.memory_region` 拒绝 `..`、UNC 路径、空字节注入及超过 32767 字符的路径。
+- `debug.init` 拒绝路径/参数/目录中包含逗号，防止 x64dbg 命令参数混淆。
+- `memory.allocate` 内存保护由 `PAGE_EXECUTE_READWRITE` 改为 `PAGE_READWRITE`（W^X 强制）。
+- CSRF 防护扩展至 SSE 流端点（`GET /sse`、`GET /mcp`）。
+- Dump 输出路径额外阻止敏感系统目录（Windows、System32、Startup）。
+- 批量 JSON-RPC 请求上限 1000 条。
+- 断点条件与日志文本设置现要求脚本执行权限。
+- `json::parse(requestId)` 以 `SafeParseId()` 安全包装，含异常处理。
+
+### 变更
+- 版本号全局更新至 1.0.8。
+- ConfigEditor UI 默认值与新安全默认值同步。
+- 默认配置新增 `security.origin_allowlist` 段。
+
+### 致谢
+- 感谢 **vonbrubeck** 负责任地披露 CSRF/DNS-rebinding RCE 漏洞（CWE-352/CWE-350），并提供详细的修复建议。
+
 ## [1.0.7] - 2026-05-19
 
 ### 新增

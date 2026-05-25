@@ -86,9 +86,14 @@ private:
     // 调用 MCP 工具
     MCPToolCallResult CallMCPTool(const std::string& toolName, const nlohmann::json& arguments);
     
-    // 解析 HTTP 请求
-    bool ParseHttpRequest(const std::string& request, std::string& method, 
+    // Parse HTTP request
+    bool ParseHttpRequest(const std::string& request, std::string& method,
                          std::string& path, std::string& body);
+
+    // Validate Origin + Host headers to prevent CSRF/DNS-rebinding attacks
+    // - If Origin is present, it must be in the configured allowlist (empty by default).
+    // - If Host is present, it must match 127.0.0.1, localhost, or the bind address.
+    bool ValidateCrossOriginAndHost(const std::string& origin, const std::string& host);
     
     // 发送 HTTP 响应
     void SendHttpResponse(SOCKET socket, int statusCode, const std::string& body,

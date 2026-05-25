@@ -5,6 +5,36 @@ All notable changes to the x64dbg MCP Server Plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.8] - 2026-05-22
+
+### Security
+- **CSRF / DNS-rebinding RCE mitigation** (reported by vonbrubeck via email):
+  - All POST endpoints now validate the `Origin` request header against a configurable allowlist (`security.origin_allowlist`, empty by default). Browser-initiated cross-origin POSTs are blocked unless explicitly allowlisted.
+  - The `Host` request header is validated against the configured bind address and well-known loopback addresses (`127.0.0.1`, `localhost`, `::1`) to prevent DNS-rebinding attacks.
+  - Removed `Access-Control-Allow-Origin: *` from all HTTP responses. SSE endpoints no longer emit permissive CORS headers.
+- Default permissions tightened:
+  - `allow_script_execution` changed from `true` to `false` (RCE primitive now strict opt-in).
+  - `allow_memory_write` and `allow_register_write` changed from `true` to `false`.
+  - `script.*` removed from the default `allowed_methods` wildcard list.
+- Rate limiting added: POST endpoints throttled at 100 requests/second (HTTP 429 on excess).
+- SSE accumulated buffer capped at 1 MiB per connection (DoS mitigation).
+- Dump path traversal protection: `dump.module` and `dump.memory_region` reject `..`, UNC paths, null bytes, and paths exceeding 32767 characters.
+- `debug.init` rejects commas in path/arguments/directory to prevent x64dbg command argument confusion.
+- `memory.allocate` now uses `PAGE_READWRITE` instead of `PAGE_EXECUTE_READWRITE` (W^X enforcement).
+- CSRF protection extended to SSE streaming endpoints (`GET /sse`, `GET /mcp`).
+- Dump output paths now also blocked from targeting sensitive system directories (Windows, System32, Startup).
+- Batch JSON-RPC requests capped at 1000 items.
+- Breakpoint condition and log text setters now require script execution permission.
+- `json::parse(requestId)` wrapped in `SafeParseId()` with exception handling.
+
+### Changed
+- Version bumped to 1.0.8 across all version strings, config defaults, and documentation.
+- ConfigEditor UI defaults updated to match new secure defaults.
+- New `security.origin_allowlist` config section added to default configuration.
+
+### Acknowledgments
+- Thanks to **vonbrubeck** for responsibly disclosing the CSRF/DNS-rebinding RCE vulnerability (CWE-352/CWE-350) and providing detailed remediation guidance.
+
 ## [1.0.7] - 2026-05-19
 
 ### Added

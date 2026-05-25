@@ -42,13 +42,21 @@ A Model Context Protocol (MCP) server implementation for x64dbg and x32dbg, enab
 - **Security**: Permission-based access control
 - **Extensible**: Plugin architecture for custom methods, resources, and prompts
 
-## What's New in v1.0.7
+## What's New in v1.0.8
 
-- **Streamable HTTP transport (MCP 2025-03-26)**: new unified `/mcp` endpoint supporting POST/GET/DELETE. POST returns the JSON-RPC response inline as `application/json`; GET opens an SSE stream for server-initiated notifications. Recommended over the deprecated SSE transport — configure clients with `"type": "http"` and `"url": "http://127.0.0.1:3000/mcp"`.
-- **HTTP+SSE transport spec compliance fixed**: `GET /sse` now sends the required `event: endpoint` handshake; `POST /message` now ACKs with `202 Accepted` and delivers the JSON-RPC response back over the SSE channel as `event: message`. Legacy SSE clients now work end-to-end again.
-- **Memory read/search no longer require a paused debuggee** (#8). `memory_read` and `memory_search` work while the target is running, matching the x64dbg GUI's Memory Map / Dump panes. `memory_write` still requires a paused debuggee.
+- **Security hardening**: Added CORS Origin/Host header validation to prevent CSRF and DNS-rebinding attacks against the HTTP server. All POST endpoints now require a valid `Origin` (if present) to match the configured origin allowlist, and the `Host` header must resolve to a loopback address. Script execution, memory write, and register write are now **disabled by default** (strict opt-in). Removed `Access-Control-Allow-Origin: *` from POST responses.
+- **Rate limiting**: POST endpoints are now throttled at 100 requests/second to prevent DoS attacks.
+- **SSE buffer hardening**: SSE client accumulated buffers are capped at 1 MiB to prevent memory exhaustion.
+- **Path traversal protection**: `dump.module` and `dump.memory_region` now validate `output_path` to reject `..`, UNC paths, and null bytes.
+- **Command injection protection**: `debug.init` now rejects path/arguments/directory parameters containing commas to prevent x64dbg command argument confusion.
 
 ## Previous Versions
+
+### v1.0.7
+
+- **Streamable HTTP transport (MCP 2025-03-26)**: new unified `/mcp` endpoint supporting POST/GET/DELETE.
+- **HTTP+SSE transport spec compliance fixed**: `GET /sse` now sends the required `event: endpoint` handshake; `POST /message` now ACKs correctly.
+- **Memory read/search no longer require a paused debuggee** (#8).
 
 ### v1.0.6
 
@@ -219,16 +227,19 @@ Edit `config.json` to customize settings:
 
 ```json
 {
-  "version": "1.0.7",
+  "version": "1.0.8",
   "server": {
     "address": "127.0.0.1",
     "port": 3000
   },
   "permissions": {
-    "allow_memory_write": true,
-    "allow_register_write": true,
-    "allow_script_execution": true,
+    "allow_memory_write": false,
+    "allow_register_write": false,
+    "allow_script_execution": false,
     "allow_breakpoint_modification": true
+  },
+  "security": {
+    "origin_allowlist": []
   },
   "logging": {
     "enabled": true,

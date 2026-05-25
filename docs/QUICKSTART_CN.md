@@ -229,16 +229,19 @@ instructions = response["result"]["instructions"]
 
 ```json
 {
-  "version": "1.0.7",
+  "version": "1.0.8",
   "server": {
     "address": "127.0.0.1",
     "port": 3000
   },
   "permissions": {
-    "allow_memory_write": true,
-    "allow_register_write": true,
-    "allow_script_execution": true,
+    "allow_memory_write": false,
+    "allow_register_write": false,
+    "allow_script_execution": false,
     "allow_breakpoint_modification": true
+  },
+  "security": {
+    "origin_allowlist": []
   },
   "logging": {
     "enabled": true,

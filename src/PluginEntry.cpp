@@ -32,7 +32,7 @@
 #include <fstream>
 
 // 鎻掍欢鐗堟湰淇℃�?
-#define PLUGIN_VERSION "1.0.7"
+#define PLUGIN_VERSION "1.0.8"
 
 // 鍙�?CMake 瑕嗙洊锛歅LUGIN_DISPLAY_NAME, PLUGIN_DIR_NAME
 #ifndef PLUGIN_DISPLAY_NAME
@@ -505,15 +505,15 @@ extern "C" __declspec(dllexport) bool pluginit(PLUG_INITSTRUCT* initStruct) {
                 std::ofstream configFile(configPath);
                 if (configFile.is_open()) {
                     configFile << R"({
-  "version": "1.0.7",
+  "version": "1.0.8",
   "server": {
     "address": "127.0.0.1",
     "port": 3000
   },
   "permissions": {
-    "allow_memory_write": true,
-    "allow_register_write": true,
-    "allow_script_execution": true,
+    "allow_memory_write": false,
+    "allow_register_write": false,
+    "allow_script_execution": false,
     "allow_breakpoint_modification": true,
     "allowed_methods": [
       "debug.*",
@@ -527,7 +527,6 @@ extern "C" __declspec(dllexport) bool pluginit(PLUG_INITSTRUCT* initStruct) {
       "thread.*",
       "stack.*",
       "comment.*",
-      "script.*",
       "context.*",
       "dump.*",
       "eval.*",
@@ -537,6 +536,9 @@ extern "C" __declspec(dllexport) bool pluginit(PLUG_INITSTRUCT* initStruct) {
       "bookmark.*",
       "patch.*"
     ]
+  },
+  "security": {
+    "origin_allowlist": []
   },
     "logging": {
         "enabled": true,

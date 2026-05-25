@@ -157,11 +157,11 @@ void ConfigEditor::LoadConfigToControls(HWND hwndDlg, const json& config) {
     // Permissions
     auto perms = config.value("permissions", json::object());
     CheckDlgButton(hwndDlg, IDC_ALLOW_MEMORY_WRITE, 
-        perms.value("allow_memory_write", true) ? BST_CHECKED : BST_UNCHECKED);
+        perms.value("allow_memory_write", false) ? BST_CHECKED : BST_UNCHECKED);
     CheckDlgButton(hwndDlg, IDC_ALLOW_REGISTER_WRITE, 
-        perms.value("allow_register_write", true) ? BST_CHECKED : BST_UNCHECKED);
+        perms.value("allow_register_write", false) ? BST_CHECKED : BST_UNCHECKED);
     CheckDlgButton(hwndDlg, IDC_ALLOW_SCRIPT_EXEC, 
-        perms.value("allow_script_execution", true) ? BST_CHECKED : BST_UNCHECKED);
+        perms.value("allow_script_execution", false) ? BST_CHECKED : BST_UNCHECKED);
     CheckDlgButton(hwndDlg, IDC_ALLOW_BREAKPOINT_MOD, 
         perms.value("allow_breakpoint_modification", true) ? BST_CHECKED : BST_UNCHECKED);
     
@@ -293,7 +293,7 @@ json ConfigEditor::GetConfigFromControls(HWND hwndDlg) {
         s_config.value("features", json::object()).value("auto_start_mcp_on_plugin_load", false);
     
     // 保留version字段
-    config["version"] = s_config.value("version", "1.0.7");
+    config["version"] = s_config.value("version", "1.0.8");
     
     return config;
 }
