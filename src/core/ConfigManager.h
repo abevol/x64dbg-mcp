@@ -56,6 +56,7 @@ public:
     bool IsRegisterWriteAllowed() const;
     bool IsScriptExecutionAllowed() const;
     
+    json GetOriginAllowlist() const;
     std::string GetLogLevel() const;
     std::string GetLogFile() const;
     bool IsLoggingEnabled() const;

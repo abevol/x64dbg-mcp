@@ -7,6 +7,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include "MCPHttpServer.h"
+#include "../core/ConfigManager.h"
 #include "../core/Logger.h"
 #include "../core/MethodDispatcher.h"
 #include "../core/JSONRPCParser.h"
@@ -30,11 +31,67 @@ namespace {
 
 constexpr size_t kReceiveChunkSize = 4096;
 constexpr size_t kMaxHttpRequestSize = 1024 * 1024;
+constexpr int kMaxRequestsPerSecond = 100;
+
+struct RateLimiter {
+    std::mutex mutex;
+    int count = 0;
+    std::chrono::steady_clock::time_point windowStart = std::chrono::steady_clock::now();
+
+    bool Allow() {
+        std::lock_guard<std::mutex> lock(mutex);
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - windowStart).count();
+        if (elapsed >= 1000) {
+            count = 0;
+            windowStart = now;
+        }
+        if (++count > kMaxRequestsPerSecond) {
+            return false;
+        }
+        return true;
+    }
+};
+
+RateLimiter g_rateLimiter;
 
 std::string ToLowerCopy(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(),
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return value;
+}
+
+std::string GetHttpHeader(const std::string& request, const std::string& headerName) {
+    const size_t headerEnd = request.find("\r\n\r\n");
+    const std::string headers = (headerEnd != std::string::npos) ? request.substr(0, headerEnd) : request;
+
+    const std::string lowerHeaders = ToLowerCopy(headers);
+    const std::string search = ToLowerCopy(headerName) + ":";
+    const size_t pos = lowerHeaders.find(search);
+    if (pos == std::string::npos) {
+        return "";
+    }
+
+    size_t valueStart = pos + search.length();
+    while (valueStart < headers.size() && (headers[valueStart] == ' ' || headers[valueStart] == '\t')) {
+        valueStart++;
+    }
+    const size_t valueEnd = headers.find('\r', valueStart);
+    if (valueEnd == std::string::npos) {
+        return "";
+    }
+
+    return headers.substr(valueStart, valueEnd - valueStart);
+}
+
+// Parse a requestId that was produced by json::dump(), falling back to null on failure.
+nlohmann::json SafeParseId(const std::string& requestId) {
+    if (requestId == "null") return nullptr;
+    try {
+        return nlohmann::json::parse(requestId);
+    } catch (const nlohmann::json::exception&) {
+        return nullptr;
+    }
 }
 
 void TrimInPlace(std::string& value) {
@@ -492,13 +549,31 @@ void MCPHttpServer::HandleClient(SOCKET clientSocket) {
 
 void MCPHttpServer::HandleHttpRequest(SOCKET clientSocket, const std::string& request) {
     std::string method, path, body;
-    
+
     if (!ParseHttpRequest(request, method, path, body)) {
         SendHttpResponse(clientSocket, 400, "{\"error\":\"Bad Request\"}");
         return;
     }
 
     Logger::Debug("HTTP Request: " + method + " " + path);
+
+    // Rate limiting: reject excessive requests (DoS protection).
+    if (!g_rateLimiter.Allow()) {
+        SendHttpResponse(clientSocket, 429, "{\"error\":\"Too Many Requests\"}");
+        return;
+    }
+
+    // CSRF / DNS-rebinding defense: validate Origin and Host on all
+    // mutable (POST) and streaming (GET /sse, GET /mcp) paths.
+    if (method == "POST" || path == "/sse" ||
+        path == "/mcp" || path == "/mcp/") {
+        const std::string origin = GetHttpHeader(request, "Origin");
+        const std::string host = GetHttpHeader(request, "Host");
+        if (!ValidateCrossOriginAndHost(origin, host)) {
+            SendHttpResponse(clientSocket, 403, "{\"error\":\"Forbidden\"}");
+            return;
+        }
+    }
 
     if (method == "GET" && path == "/sse") {
         HandleSSE(clientSocket);
@@ -527,7 +602,18 @@ void MCPHttpServer::HandleHttpRequest(SOCKET clientSocket, const std::string& re
         SendHttpResponse(clientSocket, 200, "{\"status\":\"ok\",\"service\":\"x64dbg-mcp\"}");
     }
     else {
-        SendHttpResponse(clientSocket, 404, "{\"error\":\"Not Found\",\"path\":\"" + path + "\"}");
+        // Escape path for JSON safety to prevent injection
+        std::string safePath = path;
+        for (size_t i = 0; i < safePath.size(); ) {
+            if (safePath[i] == '"' || safePath[i] == '\\') {
+                safePath.insert(i, "\\");
+                i += 2;
+            } else {
+                ++i;
+            }
+        }
+        SendHttpResponse(clientSocket, 404,
+            "{\"error\":\"Not Found\",\"path\":\"" + safePath + "\"}");
     }
 }
 
@@ -538,9 +624,8 @@ void MCPHttpServer::HandleSSE(SOCKET clientSocket) {
         "Content-Type: text/event-stream; charset=utf-8\r\n"
         "Cache-Control: no-cache\r\n"
         "Connection: keep-alive\r\n"
-        "Access-Control-Allow-Origin: *\r\n"
         "\r\n";
-    
+
     if (!SendAll(clientSocket, headers)) {
         Logger::Error("Failed to send SSE headers");
         closesocket(clientSocket);
@@ -583,7 +668,15 @@ void MCPHttpServer::HandleSSE(SOCKET clientSocket) {
         if (bytesReceived > 0) {
             buffer[bytesReceived] = '\0';
             accumulated += buffer;
-            
+
+            // Prevent unbounded buffer growth (DoS protection).
+            constexpr size_t kMaxSseAccumulatedBytes = 1024 * 1024; // 1 MB
+            if (accumulated.size() > kMaxSseAccumulatedBytes) {
+                Logger::Warning("SSE client buffer exceeded {} bytes, disconnecting",
+                                kMaxSseAccumulatedBytes);
+                break;
+            }
+
             // 鏌ユ壘瀹屾暣鐨?JSON 娑堟伅锛堟寜琛屽垎闅旓級
             size_t pos;
             while ((pos = accumulated.find('\n')) != std::string::npos) {
@@ -770,7 +863,7 @@ std::string MCPHttpServer::HandleMCPMethod(const std::string& method, const std:
         return "{\"jsonrpc\":\"2.0\",\"id\":" + requestId +
                ",\"result\":{\"protocolVersion\":\"2024-11-05\","
                "\"capabilities\":{\"tools\":{},\"resources\":{},\"prompts\":{}},"
-               "\"serverInfo\":{\"name\":\"x64dbg-mcp\",\"version\":\"1.0.7\"}}}";
+               "\"serverInfo\":{\"name\":\"x64dbg-mcp\",\"version\":\"1.0.8\"}}}";
     }
     else if (method == "notifications/initialized") {
         // 杩欐槸瀹㈡埛绔彂鐨勯€氱煡锛屼笉闇€瑕佸搷搴?
@@ -785,7 +878,7 @@ std::string MCPHttpServer::HandleMCPMethod(const std::string& method, const std:
         
         json response = {
             {"jsonrpc", "2.0"},
-            {"id", requestId == "null" ? nullptr : json::parse(requestId)},
+            {"id", SafeParseId(requestId)},
             {"result", result}
         };
         
@@ -801,7 +894,7 @@ std::string MCPHttpServer::HandleMCPMethod(const std::string& method, const std:
             if (!requestJson.contains("params") || !requestJson["params"].is_object()) {
                 return json({
                     {"jsonrpc", "2.0"},
-                    {"id", requestId == "null" ? nullptr : json::parse(requestId)},
+                    {"id", SafeParseId(requestId)},
                     {"error", {
                         {"code", -32602},
                         {"message", "Invalid params: missing params object"}
@@ -814,7 +907,7 @@ std::string MCPHttpServer::HandleMCPMethod(const std::string& method, const std:
             if (!params.contains("name") || !params["name"].is_string()) {
                 return json({
                     {"jsonrpc", "2.0"},
-                    {"id", requestId == "null" ? nullptr : json::parse(requestId)},
+                    {"id", SafeParseId(requestId)},
                     {"error", {
                         {"code", -32602},
                         {"message", "Invalid params: missing or invalid tool name"}
@@ -826,7 +919,7 @@ std::string MCPHttpServer::HandleMCPMethod(const std::string& method, const std:
             if (params.contains("arguments") && !params["arguments"].is_object()) {
                 return json({
                     {"jsonrpc", "2.0"},
-                    {"id", requestId == "null" ? nullptr : json::parse(requestId)},
+                    {"id", SafeParseId(requestId)},
                     {"error", {
                         {"code", -32602},
                         {"message", "Invalid params: arguments must be an object"}
@@ -843,7 +936,7 @@ std::string MCPHttpServer::HandleMCPMethod(const std::string& method, const std:
             if (!toolResult.success) {
                 return json({
                     {"jsonrpc", "2.0"},
-                    {"id", requestId == "null" ? nullptr : json::parse(requestId)},
+                    {"id", SafeParseId(requestId)},
                     {"error", {
                         {"code", toolResult.errorCode},
                         {"message", toolResult.errorMessage}
@@ -853,7 +946,7 @@ std::string MCPHttpServer::HandleMCPMethod(const std::string& method, const std:
             
             return json({
                 {"jsonrpc", "2.0"},
-                {"id", requestId == "null" ? nullptr : json::parse(requestId)},
+                {"id", SafeParseId(requestId)},
                 {"result", {
                     {"content", json::array({
                         {
@@ -868,7 +961,7 @@ std::string MCPHttpServer::HandleMCPMethod(const std::string& method, const std:
             Logger::Error("Invalid params in tools/call: {}", e.what());
             return json({
                 {"jsonrpc", "2.0"},
-                {"id", requestId == "null" ? nullptr : json::parse(requestId)},
+                {"id", SafeParseId(requestId)},
                 {"error", {
                     {"code", -32602},
                     {"message", std::string("Invalid params: ") + e.what()}
@@ -878,7 +971,7 @@ std::string MCPHttpServer::HandleMCPMethod(const std::string& method, const std:
             Logger::Error("Exception in tools/call: {}", e.what());
             return json({
                 {"jsonrpc", "2.0"},
-                {"id", requestId == "null" ? nullptr : json::parse(requestId)},
+                {"id", SafeParseId(requestId)},
                 {"error", {
                     {"code", -32603},
                     {"message", std::string("Internal error: ") + e.what()}
@@ -895,7 +988,7 @@ std::string MCPHttpServer::HandleMCPMethod(const std::string& method, const std:
         
         json response = {
             {"jsonrpc", "2.0"},
-            {"id", requestId == "null" ? nullptr : json::parse(requestId)},
+            {"id", SafeParseId(requestId)},
             {"result", result}
         };
         
@@ -910,7 +1003,7 @@ std::string MCPHttpServer::HandleMCPMethod(const std::string& method, const std:
         
         json response = {
             {"jsonrpc", "2.0"},
-            {"id", requestId == "null" ? nullptr : json::parse(requestId)},
+            {"id", SafeParseId(requestId)},
             {"result", result}
         };
         
@@ -925,7 +1018,7 @@ std::string MCPHttpServer::HandleMCPMethod(const std::string& method, const std:
             if (!requestJson.contains("params") || !requestJson["params"].is_object()) {
                 return json({
                     {"jsonrpc", "2.0"},
-                    {"id", requestId == "null" ? nullptr : json::parse(requestId)},
+                    {"id", SafeParseId(requestId)},
                     {"error", {
                         {"code", -32602},
                         {"message", "Invalid params: missing params object"}
@@ -937,7 +1030,7 @@ std::string MCPHttpServer::HandleMCPMethod(const std::string& method, const std:
             if (!params.contains("uri") || !params["uri"].is_string()) {
                 return json({
                     {"jsonrpc", "2.0"},
-                    {"id", requestId == "null" ? nullptr : json::parse(requestId)},
+                    {"id", SafeParseId(requestId)},
                     {"error", {
                         {"code", -32602},
                         {"message", "Invalid params: missing or invalid uri"}
@@ -953,7 +1046,7 @@ std::string MCPHttpServer::HandleMCPMethod(const std::string& method, const std:
             
             json response = {
                 {"jsonrpc", "2.0"},
-                {"id", requestId == "null" ? nullptr : json::parse(requestId)},
+                {"id", SafeParseId(requestId)},
                 {"result", {
                     {"contents", json::array({content.ToMCPFormat()})}
                 }}
@@ -965,7 +1058,7 @@ std::string MCPHttpServer::HandleMCPMethod(const std::string& method, const std:
             Logger::Error("Invalid params in resources/read: {}", e.what());
             return json({
                 {"jsonrpc", "2.0"},
-                {"id", requestId == "null" ? nullptr : json::parse(requestId)},
+                {"id", SafeParseId(requestId)},
                 {"error", {
                     {"code", -32602},
                     {"message", std::string("Invalid params: ") + e.what()}
@@ -975,7 +1068,7 @@ std::string MCPHttpServer::HandleMCPMethod(const std::string& method, const std:
             Logger::Error("Exception in resources/read: {}", e.what());
             return json({
                 {"jsonrpc", "2.0"},
-                {"id", requestId == "null" ? nullptr : json::parse(requestId)},
+                {"id", SafeParseId(requestId)},
                 {"error", {
                     {"code", -32603},
                     {"message", std::string("Internal error: ") + e.what()}
@@ -992,7 +1085,7 @@ std::string MCPHttpServer::HandleMCPMethod(const std::string& method, const std:
         
         json response = {
             {"jsonrpc", "2.0"},
-            {"id", requestId == "null" ? nullptr : json::parse(requestId)},
+            {"id", SafeParseId(requestId)},
             {"result", result}
         };
         
@@ -1007,7 +1100,7 @@ std::string MCPHttpServer::HandleMCPMethod(const std::string& method, const std:
             if (!requestJson.contains("params") || !requestJson["params"].is_object()) {
                 return json({
                     {"jsonrpc", "2.0"},
-                    {"id", requestId == "null" ? nullptr : json::parse(requestId)},
+                    {"id", SafeParseId(requestId)},
                     {"error", {
                         {"code", -32602},
                         {"message", "Invalid params: missing params object"}
@@ -1019,7 +1112,7 @@ std::string MCPHttpServer::HandleMCPMethod(const std::string& method, const std:
             if (!params.contains("name") || !params["name"].is_string()) {
                 return json({
                     {"jsonrpc", "2.0"},
-                    {"id", requestId == "null" ? nullptr : json::parse(requestId)},
+                    {"id", SafeParseId(requestId)},
                     {"error", {
                         {"code", -32602},
                         {"message", "Invalid params: missing or invalid name"}
@@ -1030,7 +1123,7 @@ std::string MCPHttpServer::HandleMCPMethod(const std::string& method, const std:
             if (params.contains("arguments") && !params["arguments"].is_object()) {
                 return json({
                     {"jsonrpc", "2.0"},
-                    {"id", requestId == "null" ? nullptr : json::parse(requestId)},
+                    {"id", SafeParseId(requestId)},
                     {"error", {
                         {"code", -32602},
                         {"message", "Invalid params: arguments must be an object"}
@@ -1048,7 +1141,7 @@ std::string MCPHttpServer::HandleMCPMethod(const std::string& method, const std:
             
             json response = {
                 {"jsonrpc", "2.0"},
-                {"id", requestId == "null" ? nullptr : json::parse(requestId)},
+                {"id", SafeParseId(requestId)},
                 {"result", promptResult.ToMCPFormat()}
             };
             
@@ -1058,7 +1151,7 @@ std::string MCPHttpServer::HandleMCPMethod(const std::string& method, const std:
             Logger::Error("Invalid params in prompts/get: {}", e.what());
             return json({
                 {"jsonrpc", "2.0"},
-                {"id", requestId == "null" ? nullptr : json::parse(requestId)},
+                {"id", SafeParseId(requestId)},
                 {"error", {
                     {"code", -32602},
                     {"message", std::string("Invalid params: ") + e.what()}
@@ -1068,7 +1161,7 @@ std::string MCPHttpServer::HandleMCPMethod(const std::string& method, const std:
             Logger::Error("Exception in prompts/get: {}", e.what());
             return json({
                 {"jsonrpc", "2.0"},
-                {"id", requestId == "null" ? nullptr : json::parse(requestId)},
+                {"id", SafeParseId(requestId)},
                 {"error", {
                     {"code", -32603},
                     {"message", std::string("Internal error: ") + e.what()}
@@ -1112,7 +1205,49 @@ bool MCPHttpServer::ParseHttpRequest(const std::string& request,
     return true;
 }
 
-void MCPHttpServer::SendHttpResponse(SOCKET socket, int statusCode, 
+bool MCPHttpServer::ValidateCrossOriginAndHost(const std::string& origin, const std::string& host) {
+    auto& config = ConfigManager::Instance();
+
+    // Origin header is always sent by browsers for cross-origin requests.
+    // If present, it must be in the configured allowlist.
+    if (!origin.empty()) {
+        const json allowlist = config.GetOriginAllowlist();
+        bool allowed = false;
+        if (allowlist.is_array()) {
+            for (const auto& entry : allowlist) {
+                if (entry.is_string() && entry.get<std::string>() == origin) {
+                    allowed = true;
+                    break;
+                }
+            }
+        }
+        if (!allowed) {
+            Logger::Warning("[Security] Rejected cross-origin POST from Origin: {}", origin);
+            return false;
+        }
+    }
+
+    // Host header validation for DNS-rebinding defense.
+    // The Host must match the configured bind address or a well-known loopback address.
+    if (!host.empty()) {
+        std::string hostOnly = host;
+        const size_t colonPos = hostOnly.find(':');
+        if (colonPos != std::string::npos) {
+            hostOnly = hostOnly.substr(0, colonPos);
+        }
+
+        const bool valid = (hostOnly == "127.0.0.1" || hostOnly == "localhost" ||
+                            hostOnly == "::1" || hostOnly == m_host);
+        if (!valid) {
+            Logger::Warning("[Security] Rejected POST with unexpected Host: {}", host);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void MCPHttpServer::SendHttpResponse(SOCKET socket, int statusCode,
                                      const std::string& body,
                                      const std::string& contentType) {
     const std::string responseBody = (statusCode == 204) ? "" : body;
@@ -1129,7 +1264,6 @@ void MCPHttpServer::SendHttpResponse(SOCKET socket, int statusCode,
     response << "HTTP/1.1 " << statusCode << " " << statusText << "\r\n"
              << "Content-Type: " << responseContentType << "\r\n"
              << "Content-Length: " << responseBody.length() << "\r\n"
-             << "Access-Control-Allow-Origin: *\r\n"
              << "Connection: close\r\n"
              << "\r\n"
              << responseBody;
@@ -1300,7 +1434,6 @@ void MCPHttpServer::HandleStreamableHttpStream(SOCKET clientSocket) {
         "Content-Type: text/event-stream; charset=utf-8\r\n"
         "Cache-Control: no-cache\r\n"
         "Connection: keep-alive\r\n"
-        "Access-Control-Allow-Origin: *\r\n"
         "\r\n";
 
     if (!SendAll(clientSocket, headers)) {

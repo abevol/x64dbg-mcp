@@ -433,10 +433,10 @@ uint64_t MemoryManager::Allocate(size_t size) {
     
     LPVOID allocatedAddr = VirtualAllocEx(
         hProcess,
-        nullptr,                    // 让系统选择地址
+        nullptr,
         size,
-        MEM_COMMIT | MEM_RESERVE,   // 提交并保留
-        PAGE_EXECUTE_READWRITE      // 可读写执行
+        MEM_COMMIT | MEM_RESERVE,
+        PAGE_READWRITE              // RW only, no execute (W^X)
     );
     
     if (allocatedAddr == nullptr) {

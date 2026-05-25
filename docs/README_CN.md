@@ -42,13 +42,21 @@
 - **安全性**：基于权限的访问控制
 - **可扩展性**：支持自定义方法、资源与提示的插件架构
 
-## v1.0.7 更新内容
+## v1.0.8 更新内容
 
-- **Streamable HTTP 传输（MCP 2025-03-26 规范）**：新增统一端点 `/mcp`，支持 POST/GET/DELETE。POST 以 `application/json` 内联返回 JSON-RPC 响应；GET 开启 SSE 流用于服务端主动推送通知。推荐取代已被官方废弃的 SSE Transport，客户端配置为 `"type": "http"`、`"url": "http://127.0.0.1:3000/mcp"`。
-- **修复 HTTP+SSE 传输协议合规性**：`GET /sse` 现在会发送规范要求的 `event: endpoint` 握手；`POST /message` 现在按规范返回 `202 Accepted` 并通过 SSE 通道以 `event: message` 推回 JSON-RPC 响应。旧 SSE 客户端现已可以端到端正常工作。
-- **内存读取/搜索不再要求暂停**（#8）。`memory_read` 与 `memory_search` 现在在目标运行态下也可调用，与 x64dbg GUI 中 Memory Map / Dump 面板的行为一致。`memory_write` 仍要求暂停。
+- **安全加固**：新增 CORS Origin/Host 头校验，防止浏览器发起的 CSRF 和 DNS-rebinding 攻击。所有 POST 端点在校验 `Origin`（如存在）时仅允许已配置的白名单来源，同时 `Host` 头必须指向本机回环地址。脚本执行、内存写入、寄存器写入现已**默认关闭**（显式 opt-in）。移除 POST 响应中的 `Access-Control-Allow-Origin: *`。
+- **速率限制**：POST 端点限流至 100 请求/秒，防止 DoS 攻击。
+- **SSE 缓冲区加固**：SSE 客户端累积缓冲区上限设为 1 MiB，防止内存耗尽。
+- **路径穿越防护**：`dump.module` 与 `dump.memory_region` 的 `output_path` 现拒绝 `..`、UNC 路径及空字节注入。
+- **命令注入防护**：`debug.init` 现拒绝包含逗号的路径/参数/目录参数，防止 x64dbg 命令参数混淆。
 
 ## 历史版本
+
+### v1.0.7
+
+- Streamable HTTP 传输（MCP 2025-03-26 规范）：新增 `/mcp` 端点，支持 POST/GET/DELETE。
+- 修复 HTTP+SSE 传输协议合规性：`GET /sse` 握手、`POST /message` 响应格式修复。
+- 内存读取/搜索不再要求暂停（#8）。
 
 ### v1.0.6
 
@@ -208,16 +216,19 @@ copy config.json <x64dbg-path>\x32\plugins\x32dbg-mcp\
 
 ```json
 {
-  "version": "1.0.7",
+  "version": "1.0.8",
   "server": {
     "address": "127.0.0.1",
     "port": 3000
   },
   "permissions": {
-    "allow_memory_write": true,
-    "allow_register_write": true,
-    "allow_script_execution": true,
+    "allow_memory_write": false,
+    "allow_register_write": false,
+    "allow_script_execution": false,
     "allow_breakpoint_modification": true
+  },
+  "security": {
+    "origin_allowlist": []
   },
   "logging": {
     "enabled": true,

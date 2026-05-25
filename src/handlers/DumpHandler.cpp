@@ -6,13 +6,68 @@
 #include "../core/Logger.h"
 #include "../utils/StringUtils.h"
 #include <_scriptapi_module.h>
+#include <cctype>
 #include <set>
+#include <filesystem>
 
 namespace MCP {
+namespace {
+
+bool ValidateOutputPath(const std::string& path, std::string& error) {
+    if (path.empty()) {
+        error = "output_path must not be empty";
+        return false;
+    }
+
+    // Reject path traversal sequences
+    if (path.find("..") != std::string::npos) {
+        error = "output_path contains forbidden path traversal sequence (..)";
+        return false;
+    }
+
+    // Reject raw UNC paths pointing to remote shares
+    if (path.size() >= 2 && path[0] == '\\' && path[1] == '\\') {
+        error = "output_path must not be a UNC network path";
+        return false;
+    }
+
+    // Reject null-byte injection (bypass techniques)
+    if (path.find('\0') != std::string::npos) {
+        error = "output_path contains null bytes";
+        return false;
+    }
+
+    // Validate path length
+    if (path.size() > 32767) {
+        error = "output_path exceeds maximum length";
+        return false;
+    }
+
+    // Reject paths targeting sensitive system directories (case-insensitive)
+    {
+        std::string lower = path;
+        for (auto& c : lower) c = static_cast<char>(::tolower(static_cast<unsigned char>(c)));
+        static const std::vector<std::string> sensitive = {
+            "\\windows\\", "\\system32\\", "\\syswow64\\",
+            "\\startup", "\\appdata\\roaming\\microsoft\\windows\\start menu",
+            "\\systemroot\\"
+        };
+        for (const auto& dir : sensitive) {
+            if (lower.find(dir) != std::string::npos) {
+                error = "output_path targets a protected system directory";
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+} // namespace
 
 void DumpHandler::RegisterMethods() {
     auto& dispatcher = MethodDispatcher::Instance();
-    
+
     dispatcher.RegisterMethod("dump.module", DumpModule);
     dispatcher.RegisterMethod("dump.memory_region", DumpMemoryRegion);
     dispatcher.RegisterMethod("dump.analyze_module", AnalyzeModule);
@@ -37,7 +92,14 @@ nlohmann::json DumpHandler::DumpModule(const nlohmann::json& params) {
     
     std::string module = params["module"].get<std::string>();
     std::string outputPath = params["output_path"].get<std::string>();
-    
+
+    {
+        std::string pathError;
+        if (!ValidateOutputPath(outputPath, pathError)) {
+            throw InvalidParamsException(pathError);
+        }
+    }
+
     // Support both flattened tool arguments and nested `options` object.
     DumpOptions options;
     nlohmann::json nestedOptions = nlohmann::json::object();
@@ -108,6 +170,14 @@ nlohmann::json DumpHandler::DumpMemoryRegion(const nlohmann::json& params) {
     uint64_t address = StringUtils::ParseAddress(addressStr);
     size_t size = params["size"].get<size_t>();
     std::string outputPath = params["output_path"].get<std::string>();
+
+    {
+        std::string pathError;
+        if (!ValidateOutputPath(outputPath, pathError)) {
+            throw InvalidParamsException(pathError);
+        }
+    }
+
     bool asRawBinary = params.value("as_raw_binary", false);
     
     auto& manager = DumpManager::Instance();

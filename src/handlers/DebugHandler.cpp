@@ -164,6 +164,21 @@ json DebugHandler::Init(const json& params) {
     std::string arguments = RequestValidator::GetString(params, "arguments", "");
     std::string currentDir = RequestValidator::GetString(params, "current_dir", "");
 
+    // Validate that path/arguments/currentDir do not contain x64dbg command
+    // separators (commas break argument parsing inside the init command).
+    auto containsDangerousSep = [](const std::string& s) {
+        return s.find(',') != std::string::npos;
+    };
+    if (containsDangerousSep(path)) {
+        return {{"success", false}, {"error", "Path must not contain commas"}};
+    }
+    if (containsDangerousSep(arguments)) {
+        return {{"success", false}, {"error", "Arguments must not contain commas"}};
+    }
+    if (containsDangerousSep(currentDir)) {
+        return {{"success", false}, {"error", "Current directory must not contain commas"}};
+    }
+
     if (path.empty()) {
         // Fall back to the cached path from a previous session.
         path = controller.GetLastDebuggedPath();

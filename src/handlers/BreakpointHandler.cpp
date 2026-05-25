@@ -306,18 +306,23 @@ nlohmann::json BreakpointHandler::SetCondition(const nlohmann::json& params) {
     if (!PermissionChecker::Instance().IsBreakpointModificationAllowed()) {
         throw PermissionDeniedException("Setting breakpoint condition requires write permission");
     }
-    
+    // Breakpoint conditions are evaluated as x64dbg expressions each time
+    // the breakpoint is hit, so also require script execution permission.
+    if (!PermissionChecker::Instance().IsScriptExecutionAllowed()) {
+        throw PermissionDeniedException("Setting breakpoint condition requires script execution permission");
+    }
+
     if (!params.contains("address")) {
         throw InvalidParamsException("Missing required parameter: address");
     }
     if (!params.contains("condition")) {
         throw InvalidParamsException("Missing required parameter: condition");
     }
-    
+
     std::string addressStr = params["address"].get<std::string>();
     uint64_t address = StringUtils::ParseAddress(addressStr);
     std::string condition = params["condition"].get<std::string>();
-    
+
     auto& manager = BreakpointManager::Instance();
     bool success = manager.SetCondition(address, condition);
     
@@ -338,18 +343,23 @@ nlohmann::json BreakpointHandler::SetLog(const nlohmann::json& params) {
     if (!PermissionChecker::Instance().IsBreakpointModificationAllowed()) {
         throw PermissionDeniedException("Setting log breakpoint requires write permission");
     }
-    
+    // Log text is evaluated by x64dbg and may contain embedded command syntax,
+    // so also require script execution permission.
+    if (!PermissionChecker::Instance().IsScriptExecutionAllowed()) {
+        throw PermissionDeniedException("Setting breakpoint log text requires script execution permission");
+    }
+
     if (!params.contains("address")) {
         throw InvalidParamsException("Missing required parameter: address");
     }
     if (!params.contains("log_text")) {
         throw InvalidParamsException("Missing required parameter: log_text");
     }
-    
+
     std::string addressStr = params["address"].get<std::string>();
     uint64_t address = StringUtils::ParseAddress(addressStr);
     std::string message = params["log_text"].get<std::string>();
-    
+
     auto& manager = BreakpointManager::Instance();
     bool success = manager.SetLogBreakpoint(address, message);
     
