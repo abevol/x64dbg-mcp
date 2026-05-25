@@ -5,6 +5,8 @@
 #include "../core/Logger.h"
 #include "../utils/StringUtils.h"
 #include <windows.h>
+#include <cstdlib>
+#include <limits>
 
 namespace MCP {
 
@@ -20,6 +22,7 @@ void DebugHandler::RegisterMethods() {
     dispatcher.RegisterMethod("debug.run_to", RunTo);
     dispatcher.RegisterMethod("debug.restart", Restart);
     dispatcher.RegisterMethod("debug.init", Init);
+    dispatcher.RegisterMethod("debug.attach_pid", AttachPid);
     dispatcher.RegisterMethod("debug.stop", Stop);
     
     Logger::Info("Registered debug.* methods");
@@ -203,6 +206,81 @@ json DebugHandler::Init(const json& params) {
     }
     if (!currentDir.empty()) {
         result["current_dir"] = currentDir;
+    }
+
+    return result;
+}
+
+json DebugHandler::AttachPid(const json& params) {
+    if (!params.contains("pid")) {
+        return {
+            {"success", false},
+            {"error", "Missing required parameter 'pid'"}
+        };
+    }
+
+    uint32_t pid = 0;
+    try {
+        if (params["pid"].is_number_unsigned()) {
+            pid = params["pid"].get<uint32_t>();
+        } else if (params["pid"].is_number_integer()) {
+            const int64_t value = params["pid"].get<int64_t>();
+            if (value <= 0) {
+                return {{"success", false}, {"error", "pid must be positive"}};
+            }
+            pid = static_cast<uint32_t>(value);
+        } else if (params["pid"].is_string()) {
+            const std::string text = params["pid"].get<std::string>();
+            const size_t start = text.find_first_not_of(" \t");
+            const size_t end = text.find_last_not_of(" \t");
+            if (start == std::string::npos) {
+                return {{"success", false}, {"error", "pid string is empty"}};
+            }
+            const std::string trimmed = text.substr(start, end - start + 1);
+            const unsigned long parsed = std::strtoul(trimmed.c_str(), nullptr, 10);
+            if (parsed == 0 || parsed > std::numeric_limits<uint32_t>::max()) {
+                return {{"success", false}, {"error", "invalid pid string"}};
+            }
+            pid = static_cast<uint32_t>(parsed);
+        } else {
+            return {{"success", false}, {"error", "pid must be number or string"}};
+        }
+    } catch (const std::exception& e) {
+        return {{"success", false}, {"error", e.what()}};
+    }
+
+    bool useAttachBreak = RequestValidator::GetBoolean(params, "attach_break", false);
+    bool detachFirst = RequestValidator::GetBoolean(params, "detach_first", true);
+    const int64_t timeoutMs = RequestValidator::GetInteger(params, "timeout_ms", 15000);
+
+    auto& controller = DebugController::Instance();
+    const bool success = controller.AttachProcess(
+        pid,
+        static_cast<uint32_t>(timeoutMs > 0 ? timeoutMs : 15000),
+        useAttachBreak,
+        detachFirst
+    );
+
+    json result = {
+        {"success", success},
+        {"requested_pid", pid},
+        {"debugging", controller.IsDebugging()}
+    };
+
+    if (success) {
+        result["state"] = StateToString(controller.GetState());
+        const uint32_t attachedPid = controller.GetDebuggeeProcessId();
+        if (attachedPid != 0) {
+            result["attached_pid"] = attachedPid;
+        }
+        if (controller.IsDebugging()) {
+            try {
+                result["rip"] = StringUtils::FormatAddress(controller.GetInstructionPointer());
+            } catch (...) {
+            }
+        }
+    } else {
+        result["error"] = "attach failed (see x32dbg-mcp.log)";
     }
 
     return result;

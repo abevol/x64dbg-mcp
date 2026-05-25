@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(x64dbg_mcp VERSION 1.0.7 LANGUAGES CXX RC)
+project(x64dbg_mcp VERSION 1.0.8 LANGUAGES CXX RC)
 
 # C++17 标准
 set(CMAKE_CXX_STANDARD 17)
@@ -42,8 +42,19 @@ else()
     message(FATAL_ERROR "Bundled xdbg SDK not found at: ${XDBG_BUNDLED_SDK_DIR} (set XDBG_SDK_DIR to override)")
 endif()
 
-# 第三方库 - 使用 vcpkg 引入 nlohmann_json
-find_package(nlohmann_json CONFIG REQUIRED)
+# nlohmann_json — vcpkg 或 FetchContent（无 vcpkg 时自动下载）
+find_package(nlohmann_json CONFIG QUIET)
+if(NOT nlohmann_json_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(
+        nlohmann_json
+        URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+    )
+    FetchContent_MakeAvailable(nlohmann_json)
+    message(STATUS "Using FetchContent nlohmann_json")
+else()
+    message(STATUS "Using vcpkg nlohmann_json")
+endif()
 
 # 源文件
 set(CORE_SOURCES
