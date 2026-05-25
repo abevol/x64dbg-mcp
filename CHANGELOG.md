@@ -5,7 +5,10 @@ All notable changes to the x64dbg MCP Server Plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.8] - 2026-05-22
+## [1.0.8] - 2026-05-25
+
+### Added
+- **New MCP tool `debug_attach_pid`** (PR #9 by @qq932024214): attach debugger to an already-running process by PID with proper attach polling and decimal PID support. Plugin commands `mcpattach`/`mcpattachbreak`/`mcpdetach` registered for x64dbg command thread execution. Includes FetchContent fallback for nlohmann_json when vcpkg is not available.
 
 ### Security
 - **CSRF / DNS-rebinding RCE mitigation** (reported by vonbrubeck via email):
@@ -34,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Acknowledgments
 - Thanks to **vonbrubeck** for responsibly disclosing the CSRF/DNS-rebinding RCE vulnerability (CWE-352/CWE-350) and providing detailed remediation guidance.
+- Thanks to **qq932024214** for contributing the `debug_attach_pid` feature (PR #9).
 
 ## [1.0.7] - 2026-05-19
 

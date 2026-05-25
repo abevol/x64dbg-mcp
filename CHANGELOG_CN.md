@@ -5,7 +5,10 @@ x64dbg MCP Server Plugin 的所有重要变更都会记录在此文件中。
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并采用 [Semantic Versioning](https://semver.org/spec/v2.0.0.html)。
 
-## [1.0.8] - 2026-05-22
+## [1.0.8] - 2026-05-25
+
+### 新增
+- **新 MCP 工具 `debug_attach_pid`**（PR #9 by @qq932024214）：通过 PID 附加调试器到已运行进程，含正确的附加轮询和十进制 PID 支持。注册插件命令 `mcpattach`/`mcpattachbreak`/`mcpdetach` 用于 x64dbg 命令线程执行。CMake 支持 FetchContent 回退（无 vcpkg 时自动下载 nlohmann_json）。
 
 ### 安全
 - **CSRF / DNS-rebinding RCE 漏洞修复**（vonbrubeck 通过邮件报告）：
@@ -34,6 +37,7 @@ x64dbg MCP Server Plugin 的所有重要变更都会记录在此文件中。
 
 ### 致谢
 - 感谢 **vonbrubeck** 负责任地披露 CSRF/DNS-rebinding RCE 漏洞（CWE-352/CWE-350），并提供详细的修复建议。
+- 感谢 **qq932024214** 贡献 `debug_attach_pid` 功能（PR #9）。
 
 ## [1.0.7] - 2026-05-19
 
