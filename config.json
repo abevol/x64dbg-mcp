@@ -1,13 +1,13 @@
 {
-  "version": "1.0.7",
+  "version": "1.0.9",
   "server": {
     "address": "127.0.0.1",
     "port": 3000
   },
   "permissions": {
-    "allow_memory_write": true,
-    "allow_register_write": true,
-    "allow_script_execution": true,
+    "allow_memory_write": false,
+    "allow_register_write": false,
+    "allow_script_execution": false,
     "allow_breakpoint_modification": true,
     "allowed_methods": [
       "debug.*",
@@ -21,7 +21,6 @@
       "thread.*",
       "stack.*",
       "comment.*",
-      "script.*",
       "context.*",
       "dump.*",
       "eval.*",
@@ -38,6 +37,10 @@
     "file": "x64dbg_mcp.log",
     "max_file_size_mb": 10,
     "console_output": true
+  },
+  "security": {
+    "origin_allowlist": [],
+    "host_allowlist": []
   },
   "timeout": {
     "request_timeout_ms": 30000,

@@ -63,16 +63,17 @@ std::vector<StackFrame> StackManager::GetStackTraceManual(size_t maxDepth) {
     
     // 根据架构获取正确的寄存器
 #ifdef XDBG_ARCH_X64
+    using StackPointer = uint64_t;
     uint64_t rsp = regMgr.GetRegister("rsp");
     uint64_t rbp = regMgr.GetRegister("rbp");
     uint64_t rip = regMgr.GetRegister("rip");
-    const size_t ptrSize = 8;
 #else
+    using StackPointer = uint32_t;
     uint64_t rsp = regMgr.GetRegister("esp");
     uint64_t rbp = regMgr.GetRegister("ebp");
     uint64_t rip = regMgr.GetRegister("eip");
-    const size_t ptrSize = 4;
 #endif
+    const size_t ptrSize = sizeof(StackPointer);
     
     LOG_DEBUG("Stack trace starting from IP={:016X}, SP={:016X}, BP={:016X}", rip, rsp, rbp);
     
@@ -100,20 +101,23 @@ std::vector<StackFrame> StackManager::GetStackTraceManual(size_t maxDepth) {
         }
         
         // 读取返回地址（RBP 通常指向保存的上一层 RBP，返回地址在 RBP+8）
-        uint64_t returnAddress = 0;
-        uint64_t savedRBP = 0;
-        
-        // 读取保存的 RBP
-        if (!Script::Memory::Read(currentRBP, &savedRBP, sizeof(savedRBP), nullptr)) {
+        StackPointer returnPointer = 0;
+        StackPointer savedPointer = 0;
+
+        // Read the saved frame pointer.
+        if (!Script::Memory::Read(currentRBP, &savedPointer, sizeof(savedPointer), nullptr)) {
             LOG_DEBUG("Failed to read saved RBP at {:016X}", currentRBP);
             break;
         }
-        
-        // 读取返回地址（在调用约定中，返回地址在 BP + 指针大小）
-        if (!Script::Memory::Read(currentRBP + ptrSize, &returnAddress, sizeof(returnAddress), nullptr)) {
+        const uint64_t savedRBP = static_cast<uint64_t>(savedPointer);
+
+        // Read the return address at the native pointer offset.
+        if (!Script::Memory::Read(currentRBP + ptrSize, &returnPointer,
+                                  sizeof(returnPointer), nullptr)) {
             LOG_DEBUG("Failed to read return address at {:016X}", currentRBP + ptrSize);
             break;
         }
+        const uint64_t returnAddress = static_cast<uint64_t>(returnPointer);
         
         // 验证返回地址
         if (returnAddress == 0 || returnAddress < 0x10000) {

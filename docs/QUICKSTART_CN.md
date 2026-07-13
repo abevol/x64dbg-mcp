@@ -229,7 +229,7 @@ instructions = response["result"]["instructions"]
 
 ```json
 {
-  "version": "1.0.8",
+  "version": "1.0.9",
   "server": {
     "address": "127.0.0.1",
     "port": 3000
@@ -241,7 +241,8 @@ instructions = response["result"]["instructions"]
     "allow_breakpoint_modification": true
   },
   "security": {
-    "origin_allowlist": []
+    "origin_allowlist": [],
+    "host_allowlist": []
   },
   "logging": {
     "enabled": true,

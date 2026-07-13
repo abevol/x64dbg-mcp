@@ -5,6 +5,21 @@ x64dbg MCP Server Plugin 的所有重要变更都会记录在此文件中。
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并采用 [Semantic Versioning](https://semver.org/spec/v2.0.0.html)。
 
+## [1.0.9] - 2026-07-13
+
+### 修复
+- 修复 x32dbg 栈回溯将保存的 EBP 和返回地址按 8 字节读取，导致相邻 32 位栈数据被拼接成无效 64 位地址的问题（#12）。
+- x32dbg 地址改为 8 位十六进制格式，x64dbg 继续使用 16 位格式。
+- 配置编辑器保存设置时会保留 `security` 段。
+
+### 安全
+- 新增 `security.host_allowlist`，允许显式信任 FRP/反向代理域名或 IP，同时保留 DNS-rebinding 防护（#11）。
+- Host 匹配忽略大小写、自动移除端口，并正确处理带方括号的 IPv6 Host。
+- 仓库附带的 `config.json` 与安全运行时默认值同步：默认禁用内存/寄存器写入和脚本执行，且默认方法白名单不包含 `script.*`。
+
+### 变更
+- 插件元数据、协议响应、配置及文档中的版本号统一更新至 1.0.9。
+
 ## [1.0.8] - 2026-05-25
 
 ### 新增

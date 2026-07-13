@@ -5,6 +5,21 @@ All notable changes to the x64dbg MCP Server Plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.9] - 2026-07-13
+
+### Fixed
+- Fixed x32dbg stack walking reading saved EBP and return addresses as 8-byte values, which combined adjacent 32-bit stack entries into invalid 64-bit addresses (#12).
+- Address formatting now uses 8 hexadecimal digits on x32dbg and 16 on x64dbg.
+- ConfigEditor now preserves the `security` section when saving settings.
+
+### Security
+- Added `security.host_allowlist` for explicitly trusted FRP/reverse-proxy hostnames and IP addresses while retaining DNS-rebinding protection (#11).
+- Host matching is case-insensitive, strips ports, and correctly handles bracketed IPv6 hosts.
+- Updated the packaged `config.json` to match secure runtime defaults: memory/register writes and script execution are disabled, and `script.*` is not allowlisted by default.
+
+### Changed
+- Version bumped to 1.0.9 across plugin metadata, protocol responses, configuration, and documentation.
+
 ## [1.0.8] - 2026-05-25
 
 ### Added
