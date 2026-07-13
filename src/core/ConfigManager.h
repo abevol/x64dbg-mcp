@@ -57,6 +57,7 @@ public:
     bool IsScriptExecutionAllowed() const;
     
     json GetOriginAllowlist() const;
+    json GetHostAllowlist() const;
     std::string GetLogLevel() const;
     std::string GetLogFile() const;
     bool IsLoggingEnabled() const;

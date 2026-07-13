@@ -42,6 +42,13 @@
 - **安全性**：基于权限的访问控制
 - **可扩展性**：支持自定义方法、资源与提示的插件架构
 
+## v1.0.9 更新内容
+
+- **远程 Host 白名单**：新增 `security.host_allowlist`，可显式允许 FRP/反向代理使用的域名或 IP，同时保留 DNS-rebinding 防护。
+- **x32dbg 栈回溯修复**：x86 保存的帧指针和返回地址改为按原生 4 字节读取，避免相邻栈数据被拼接成无效 64 位地址。
+- **架构相关地址格式**：x32dbg 使用 8 位十六进制地址，x64dbg 继续使用 16 位地址。
+- **安全默认配置同步**：附带的 `config.json` 默认关闭内存/寄存器写入和脚本执行。
+
 ## v1.0.8 更新内容
 
 - **安全加固**：新增 CORS Origin/Host 头校验，防止浏览器发起的 CSRF 和 DNS-rebinding 攻击。所有 POST 端点在校验 `Origin`（如存在）时仅允许已配置的白名单来源，同时 `Host` 头必须指向本机回环地址。脚本执行、内存写入、寄存器写入现已**默认关闭**（显式 opt-in）。移除 POST 响应中的 `Access-Control-Allow-Origin: *`。
@@ -216,7 +223,7 @@ copy config.json <x64dbg-path>\x32\plugins\x32dbg-mcp\
 
 ```json
 {
-  "version": "1.0.8",
+  "version": "1.0.9",
   "server": {
     "address": "127.0.0.1",
     "port": 3000
@@ -228,7 +235,8 @@ copy config.json <x64dbg-path>\x32\plugins\x32dbg-mcp\
     "allow_breakpoint_modification": true
   },
   "security": {
-    "origin_allowlist": []
+    "origin_allowlist": [],
+    "host_allowlist": []
   },
   "logging": {
     "enabled": true,

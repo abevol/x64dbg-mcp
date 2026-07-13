@@ -291,9 +291,13 @@ json ConfigEditor::GetConfigFromControls(HWND hwndDlg) {
     // Keep menu-managed toggle persisted even though it has no dialog control.
     config["features"]["auto_start_mcp_on_plugin_load"] =
         s_config.value("features", json::object()).value("auto_start_mcp_on_plugin_load", false);
-    
+    config["security"] = s_config.value("security", json::object({
+        {"origin_allowlist", json::array()},
+        {"host_allowlist", json::array()}
+    }));
+
     // 保留version字段
-    config["version"] = s_config.value("version", "1.0.8");
+    config["version"] = s_config.value("version", "1.0.9");
     
     return config;
 }

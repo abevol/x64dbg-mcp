@@ -14,7 +14,7 @@ ConfigManager& ConfigManager::Instance() {
 json ConfigManager::CreateDefaultConfig() const {
     json config;
     
-    config["version"] = "1.0.8";
+    config["version"] = "1.0.9";
     
     // Server configuration
     config["server"]["address"] = "127.0.0.1";
@@ -42,6 +42,7 @@ json ConfigManager::CreateDefaultConfig() const {
     
     // Security
     config["security"]["origin_allowlist"] = json::array();
+    config["security"]["host_allowlist"] = json::array();
 
     // Timeout
     config["timeout"]["request_timeout_ms"] = 30000;
@@ -228,6 +229,10 @@ bool ConfigManager::IsScriptExecutionAllowed() const {
 
 json ConfigManager::GetOriginAllowlist() const {
     return Get<json>("security.origin_allowlist", json::array());
+}
+
+json ConfigManager::GetHostAllowlist() const {
+    return Get<json>("security.host_allowlist", json::array());
 }
 
 std::string ConfigManager::GetLogLevel() const {

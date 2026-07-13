@@ -42,6 +42,13 @@ A Model Context Protocol (MCP) server implementation for x64dbg and x32dbg, enab
 - **Security**: Permission-based access control
 - **Extensible**: Plugin architecture for custom methods, resources, and prompts
 
+## What's New in v1.0.9
+
+- **Remote host allowlist**: `security.host_allowlist` permits explicit FRP/reverse-proxy hostnames or IP addresses without disabling DNS-rebinding protection. Loopback and the configured bind address remain allowed by default.
+- **x32dbg stack trace fix**: x86 saved frame pointers and return addresses are now read at their native 4-byte width, preventing adjacent stack values from being combined into invalid 64-bit addresses.
+- **Architecture-aware addresses**: x32dbg formats addresses as 8 hexadecimal digits; x64dbg continues using 16 digits.
+- **Secure packaged defaults**: the shipped `config.json` now matches runtime defaults, with memory/register writes and script execution disabled.
+
 ## What's New in v1.0.8
 
 - **Security hardening**: Added CORS Origin/Host header validation to prevent CSRF and DNS-rebinding attacks against the HTTP server. All POST endpoints now require a valid `Origin` (if present) to match the configured origin allowlist, and the `Host` header must resolve to a loopback address. Script execution, memory write, and register write are now **disabled by default** (strict opt-in). Removed `Access-Control-Allow-Origin: *` from POST responses.
@@ -227,7 +234,7 @@ Edit `config.json` to customize settings:
 
 ```json
 {
-  "version": "1.0.8",
+  "version": "1.0.9",
   "server": {
     "address": "127.0.0.1",
     "port": 3000
@@ -239,7 +246,8 @@ Edit `config.json` to customize settings:
     "allow_breakpoint_modification": true
   },
   "security": {
-    "origin_allowlist": []
+    "origin_allowlist": [],
+    "host_allowlist": []
   },
   "logging": {
     "enabled": true,

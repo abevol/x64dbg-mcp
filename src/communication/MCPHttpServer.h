@@ -92,7 +92,7 @@ private:
 
     // Validate Origin + Host headers to prevent CSRF/DNS-rebinding attacks
     // - If Origin is present, it must be in the configured allowlist (empty by default).
-    // - If Host is present, it must match 127.0.0.1, localhost, or the bind address.
+    // If Host is present, it must match a loopback address, the bind address, or the configured allowlist.
     bool ValidateCrossOriginAndHost(const std::string& origin, const std::string& host);
     
     // 发送 HTTP 响应

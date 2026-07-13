@@ -863,7 +863,7 @@ std::string MCPHttpServer::HandleMCPMethod(const std::string& method, const std:
         return "{\"jsonrpc\":\"2.0\",\"id\":" + requestId +
                ",\"result\":{\"protocolVersion\":\"2024-11-05\","
                "\"capabilities\":{\"tools\":{},\"resources\":{},\"prompts\":{}},"
-               "\"serverInfo\":{\"name\":\"x64dbg-mcp\",\"version\":\"1.0.8\"}}}";
+               "\"serverInfo\":{\"name\":\"x64dbg-mcp\",\"version\":\"1.0.9\"}}}";
     }
     else if (method == "notifications/initialized") {
         // 杩欐槸瀹㈡埛绔彂鐨勯€氱煡锛屼笉闇€瑕佸搷搴?
@@ -1228,16 +1228,36 @@ bool MCPHttpServer::ValidateCrossOriginAndHost(const std::string& origin, const 
     }
 
     // Host header validation for DNS-rebinding defense.
-    // The Host must match the configured bind address or a well-known loopback address.
+    // The Host must match the configured bind address, a loopback address, or an explicit allowlist entry.
     if (!host.empty()) {
         std::string hostOnly = host;
-        const size_t colonPos = hostOnly.find(':');
-        if (colonPos != std::string::npos) {
-            hostOnly = hostOnly.substr(0, colonPos);
+        if (!hostOnly.empty() && hostOnly.front() == '[') {
+            const size_t closingBracket = hostOnly.find(']');
+            if (closingBracket != std::string::npos) {
+                hostOnly = hostOnly.substr(1, closingBracket - 1);
+            }
+        } else {
+            const size_t colonPos = hostOnly.find(':');
+            if (colonPos != std::string::npos) {
+                hostOnly = hostOnly.substr(0, colonPos);
+            }
         }
+        hostOnly = ToLowerCopy(hostOnly);
 
-        const bool valid = (hostOnly == "127.0.0.1" || hostOnly == "localhost" ||
-                            hostOnly == "::1" || hostOnly == m_host);
+        bool valid = (hostOnly == "127.0.0.1" || hostOnly == "localhost" ||
+                      hostOnly == "::1" || hostOnly == ToLowerCopy(m_host));
+        if (!valid) {
+            const json allowlist = config.GetHostAllowlist();
+            if (allowlist.is_array()) {
+                for (const auto& entry : allowlist) {
+                    if (entry.is_string() &&
+                        ToLowerCopy(entry.get<std::string>()) == hostOnly) {
+                        valid = true;
+                        break;
+                    }
+                }
+            }
+        }
         if (!valid) {
             Logger::Warning("[Security] Rejected POST with unexpected Host: {}", host);
             return false;

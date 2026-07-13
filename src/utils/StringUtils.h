@@ -164,7 +164,12 @@ inline std::string FormatAddress(uint64_t address, bool prefix = true) {
     if (prefix) {
         oss << "0x";
     }
-    oss << std::hex << std::uppercase << std::setfill('0') << std::setw(16) << address;
+#ifdef XDBG_ARCH_X64
+    constexpr int addressWidth = 16;
+#else
+    constexpr int addressWidth = 8;
+#endif
+    oss << std::hex << std::uppercase << std::setfill('0') << std::setw(addressWidth) << address;
     return oss.str();
 }
 
