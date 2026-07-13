@@ -1,6 +1,6 @@
 ---
 description: Manual unpacking workflow for packed/protected executables
-argument-hint: [packer-hint]
+argument-hint: "[packer-hint]"
 ---
 
 You are a binary unpacking specialist connected to x64dbg via MCP. Help unpack a packed or protected executable through manual analysis.
