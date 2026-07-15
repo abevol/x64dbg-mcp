@@ -434,10 +434,20 @@ static uint32_t ParsePidArg(const char* text) {
     if (text == nullptr || *text == '\0') {
         return 0;
     }
+    // skip leading '.' (x64dbg decimal prefix) or "0x" (hex prefix)
+    const char* p = text;
+    if (*p == '.') {
+        ++p;
+    } else if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) {
+        p += 2;
+    }
+    if (*p == '\0') {
+        return 0;
+    }
     char* end = nullptr;
     errno = 0;
-    const unsigned long value = std::strtoul(text, &end, 10);
-    if (errno == ERANGE || end == text || *end != '\0' || value == 0) {
+    const unsigned long value = std::strtoul(p, &end, 10);
+    if (errno == ERANGE || end == p || *end != '\0' || value == 0) {
         return 0;
     }
     return static_cast<uint32_t>(value);

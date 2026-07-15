@@ -5,6 +5,13 @@ All notable changes to the x64dbg MCP Server Plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- Fixed `debug_attach_pid` timing out on x64dbg: the `mcpattach` plugin command was formatted with a leading `.` (e.g. `mcpattach .6520`) which the x64dbg command parser passes verbatim to `argv[1]`. `ParsePidArg` uses `strtoul` with base 10, so `.` caused the parse to fail silently — `AttachProcessCore` was never called, and `WaitForDebugging` timed out after 15 seconds.
+- `ParsePidArg` now tolerates leading `.` (x64dbg decimal prefix) and `0x`/`0X` (hex prefix) for defense in depth.
+- Error message `"attach failed (see x32dbg-mcp.log)"` now correctly uses `PLUGIN_DIR_NAME` so it points to `x64dbg-mcp.log` on 64-bit builds.
+
 ## [1.0.9] - 2026-07-13
 
 ### Fixed
