@@ -74,7 +74,7 @@ private:
     // POST returns the JSON-RPC response inline as application/json.
     // GET opens a long-lived SSE stream used only for server-to-client pushes
     // (no endpoint event handshake, unlike the legacy /sse transport).
-    void HandleStreamableHttpPost(SOCKET clientSocket, const std::string& body);
+    void HandleStreamableHttpPost(SOCKET clientSocket, const std::string& body, const std::string& origin = "");
     void HandleStreamableHttpStream(SOCKET clientSocket);
     
     // 处理 MCP 方法调用
@@ -97,7 +97,8 @@ private:
     
     // 发送 HTTP 响应
     void SendHttpResponse(SOCKET socket, int statusCode, const std::string& body,
-                         const std::string& contentType = "application/json");
+                         const std::string& contentType = "application/json",
+                         const std::string& origin = "");
     
     // 发送 SSE 事件
     bool SendSSEEvent(SOCKET socket, const std::string& event, const std::string& data);

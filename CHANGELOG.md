@@ -5,6 +5,14 @@ All notable changes to the x64dbg MCP Server Plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- CORS support for browser-based MCP clients (e.g. MCP Inspector Web UI):
+  - `OPTIONS` preflight handler returns proper CORS headers (`Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`, `Access-Control-Allow-Headers`, `Access-Control-Max-Age`).
+  - All responses now include `Access-Control-Allow-Origin` when the request has a valid `Origin` header.
+  - SSE and Streamable HTTP stream responses include `Access-Control-Allow-Origin: *` (Origin is validated before routing).
+
 ## [1.0.9] - 2026-07-13
 
 ### Fixed

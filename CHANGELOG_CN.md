@@ -5,6 +5,14 @@ x64dbg MCP Server Plugin 的所有重要变更都会记录在此文件中。
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并采用 [Semantic Versioning](https://semver.org/spec/v2.0.0.html)。
 
+## [Unreleased]
+
+### 新增
+- 浏览器端 MCP 客户端（如 MCP Inspector Web UI）的 CORS 支持：
+  - `OPTIONS` 预检处理器返回正确的 CORS 头（`Access-Control-Allow-Origin`、`Access-Control-Allow-Methods`、`Access-Control-Allow-Headers`、`Access-Control-Max-Age`）。
+  - 所有响应在请求携带有效 `Origin` 头时包含 `Access-Control-Allow-Origin`。
+  - SSE 和 Streamable HTTP 流响应包含 `Access-Control-Allow-Origin: *`（Origin 已在路由前校验）。
+
 ## [1.0.9] - 2026-07-13
 
 ### 修复
