@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- CORS support for browser-based MCP clients (e.g. MCP Inspector Web UI):
+  - `OPTIONS` preflight handler returns proper CORS headers (`Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`, `Access-Control-Allow-Headers`, `Access-Control-Max-Age`).
+  - All responses now include `Access-Control-Allow-Origin` when the request has a valid `Origin` header.
+  - SSE and Streamable HTTP stream responses include `Access-Control-Allow-Origin: *` (Origin is validated before routing).
+
 ### Fixed
 - Fixed `debug_attach_pid` timing out on x64dbg: the `mcpattach` plugin command was formatted with a leading `.` (e.g. `mcpattach .6520`) which the x64dbg command parser passes verbatim to `argv[1]`. `ParsePidArg` uses `strtoul` with base 10, so `.` caused the parse to fail silently — `AttachProcessCore` was never called, and `WaitForDebugging` timed out after 15 seconds.
 - `ParsePidArg` now tolerates leading `.` (x64dbg decimal prefix) and `0x`/`0X` (hex prefix) for defense in depth.
