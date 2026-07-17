@@ -5,6 +5,13 @@ x64dbg MCP Server Plugin 的所有重要变更都会记录在此文件中。
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，
 并采用 [Semantic Versioning](https://semver.org/spec/v2.0.0.html)。
 
+## [Unreleased]
+
+### 修复
+- 修复 `debug_attach_pid` 在 x64dbg 上超时的问题：`mcpattach` 插件命令格式中带前导 `.`（如 `mcpattach .6520`），x64dbg 命令解析器原样传入 `argv[1]`。`ParsePidArg` 使用 `strtoul` 以十进制解析，`.` 导致解析静默失败 — `AttachProcessCore` 从未被调用，`WaitForDebugging` 15 秒后超时。
+- `ParsePidArg` 现在容错前导 `.`（x64dbg 十进制前缀）和 `0x`/`0X`（十六进制前缀）作为深度防御。
+- 错误信息 `"attach failed (see x32dbg-mcp.log)"` 现在使用 `PLUGIN_DIR_NAME` 动态拼接，x64 构建下指向正确的 `x64dbg-mcp.log`。
+
 ## [1.0.9] - 2026-07-13
 
 ### 修复

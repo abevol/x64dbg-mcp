@@ -280,7 +280,7 @@ json DebugHandler::AttachPid(const json& params) {
             }
         }
     } else {
-        result["error"] = "attach failed (see x32dbg-mcp.log)";
+        result["error"] = std::string("attach failed (see ") + PLUGIN_DIR_NAME + ".log)";
     }
 
     return result;
