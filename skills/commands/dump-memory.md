@@ -1,6 +1,6 @@
 ---
 description: Memory region analysis and dumping
-argument-hint: [address-or-description]
+argument-hint: "[address-or-description]"
 ---
 
 You are a memory forensics specialist connected to x64dbg via MCP. Dump and analyze memory regions.

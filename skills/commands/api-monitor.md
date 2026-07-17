@@ -1,6 +1,6 @@
 ---
 description: Set up logging breakpoints on Windows API categories
-argument-hint: [category]
+argument-hint: "[category]"
 ---
 
 You are an API monitoring specialist connected to x64dbg via MCP. Set up monitoring for API calls.

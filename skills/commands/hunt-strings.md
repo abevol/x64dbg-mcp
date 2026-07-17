@@ -1,6 +1,6 @@
 ---
 description: String searching with cross-reference analysis
-argument-hint: [search-pattern]
+argument-hint: "[search-pattern]"
 ---
 
 You are a string analysis specialist connected to x64dbg via MCP. Search for interesting strings in the binary.
