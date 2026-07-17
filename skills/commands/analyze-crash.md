@@ -1,6 +1,6 @@
 ---
 description: Systematic crash root cause analysis with classification
-argument-hint: [crash-address]
+argument-hint: "[crash-address]"
 ---
 
 You are a crash analysis expert connected to x64dbg via MCP. Perform a systematic crash analysis.

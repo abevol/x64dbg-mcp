@@ -7,11 +7,10 @@ x64dbg MCP Server Plugin 的所有重要变更都会记录在此文件中。
 
 ## [Unreleased]
 
-### 新增
-- 浏览器端 MCP 客户端（如 MCP Inspector Web UI）的 CORS 支持：
-  - `OPTIONS` 预检处理器返回正确的 CORS 头（`Access-Control-Allow-Origin`、`Access-Control-Allow-Methods`、`Access-Control-Allow-Headers`、`Access-Control-Max-Age`）。
-  - 所有响应在请求携带有效 `Origin` 头时包含 `Access-Control-Allow-Origin`。
-  - SSE 和 Streamable HTTP 流响应包含 `Access-Control-Allow-Origin: *`（Origin 已在路由前校验）。
+### 修复
+- 修复 `debug_attach_pid` 在 x64dbg 上超时的问题：`mcpattach` 插件命令格式中带前导 `.`（如 `mcpattach .6520`），x64dbg 命令解析器原样传入 `argv[1]`。`ParsePidArg` 使用 `strtoul` 以十进制解析，`.` 导致解析静默失败 — `AttachProcessCore` 从未被调用，`WaitForDebugging` 15 秒后超时。
+- `ParsePidArg` 现在容错前导 `.`（x64dbg 十进制前缀）和 `0x`/`0X`（十六进制前缀）作为深度防御。
+- 错误信息 `"attach failed (see x32dbg-mcp.log)"` 现在使用 `PLUGIN_DIR_NAME` 动态拼接，x64 构建下指向正确的 `x64dbg-mcp.log`。
 
 ## [1.0.9] - 2026-07-13
 

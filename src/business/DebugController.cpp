@@ -444,7 +444,7 @@ bool DebugController::AttachProcess(uint32_t pid,
     }
 
     char pluginCmd[32] = {};
-    sprintf_s(pluginCmd, "mcpattach .%u", pid);
+    sprintf_s(pluginCmd, "mcpattach %u", pid);
     (void)useAttachBreak;
     Logger::Info("AttachProcess: queue {}", pluginCmd);
     if (!ExecuteCommand(pluginCmd)) {

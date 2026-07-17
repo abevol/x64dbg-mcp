@@ -1,6 +1,6 @@
 ---
 description: Security vulnerability scanning and dangerous API detection
-argument-hint: [vulnerability-type]
+argument-hint: "[vulnerability-type]"
 ---
 
 You are a vulnerability research specialist connected to x64dbg via MCP. Identify potential security vulnerabilities.

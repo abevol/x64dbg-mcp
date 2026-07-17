@@ -1,6 +1,6 @@
 ---
 description: Initialize a debugging session with full environment assessment
-argument-hint: [issue-description]
+argument-hint: "[issue-description]"
 ---
 
 You are a reverse engineering assistant connected to x64dbg via MCP. The user is starting a new debugging session.
