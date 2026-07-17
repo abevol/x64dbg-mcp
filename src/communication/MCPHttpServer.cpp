@@ -534,17 +534,8 @@ void MCPHttpServer::HandleClient(SOCKET clientSocket) {
         return;
     }
 
-    std::string method;
-    std::string path;
-    std::string body;
-    const bool isPersistentStream = ParseHttpRequest(request, method, path, body) &&
-        method == "GET" && (path == "/sse" || path == "/mcp" || path == "/mcp/");
-
     HandleHttpRequest(clientSocket, request);
-
-    if (!isPersistentStream) {
-        closesocket(clientSocket);
-    }
+    closesocket(clientSocket);
 }
 
 void MCPHttpServer::HandleHttpRequest(SOCKET clientSocket, const std::string& request) {
@@ -558,6 +549,13 @@ void MCPHttpServer::HandleHttpRequest(SOCKET clientSocket, const std::string& re
     Logger::Debug("HTTP Request: " + method + " " + path);
 
     const std::string origin = GetHttpHeader(request, "Origin");
+    const std::string host = GetHttpHeader(request, "Host");
+
+    // Validate untrusted headers before reflecting Origin in any response.
+    if (!ValidateCrossOriginAndHost(origin, host)) {
+        SendHttpResponse(clientSocket, 403, "{\"error\":\"Forbidden\"}");
+        return;
+    }
 
     // Rate limiting: reject excessive requests (DoS protection).
     if (!g_rateLimiter.Allow()) {
@@ -565,20 +563,10 @@ void MCPHttpServer::HandleHttpRequest(SOCKET clientSocket, const std::string& re
         return;
     }
 
-    // CSRF / DNS-rebinding defense: validate Origin and Host on all
-    // mutable (POST) and streaming (GET /sse, GET /mcp) paths.
-    if (method == "POST" || method == "OPTIONS" || path == "/sse" ||
-        path == "/mcp" || path == "/mcp/") {
-        const std::string host = GetHttpHeader(request, "Host");
-        if (!ValidateCrossOriginAndHost(origin, host)) {
-            SendHttpResponse(clientSocket, 403, "{\"error\":\"Forbidden\"}", "application/json", origin);
-            return;
-        }
-    }
-
     // CORS preflight for browser-based clients (e.g. MCP Inspector Web UI).
     if (method == "OPTIONS" && (path == "/mcp" || path == "/mcp/" ||
-        path == "/sse" || path == "/message" || path == "/")) {
+        path == "/sse" || path == "/message" || path == "/messages" ||
+        path == "/rpc" || path == "/rpc/" || path == "/")) {
         std::ostringstream resp;
         resp << "HTTP/1.1 204 No Content\r\n"
              << "Content-Length: 0\r\n";
@@ -592,12 +580,11 @@ void MCPHttpServer::HandleHttpRequest(SOCKET clientSocket, const std::string& re
              << "Access-Control-Max-Age: 86400\r\n"
              << "Connection: close\r\n\r\n";
         SendAll(clientSocket, resp.str());
-        closesocket(clientSocket);
         return;
     }
 
     if (method == "GET" && path == "/sse") {
-        HandleSSE(clientSocket);
+        HandleSSE(clientSocket, origin);
     }
     else if (method == "POST" && (path == "/mcp" || path == "/mcp/")) {
         // Streamable HTTP transport (MCP 2025-03-26): single MCP endpoint.
@@ -605,7 +592,7 @@ void MCPHttpServer::HandleHttpRequest(SOCKET clientSocket, const std::string& re
     }
     else if (method == "GET" && (path == "/mcp" || path == "/mcp/")) {
         // Streamable HTTP GET stream for server-initiated notifications.
-        HandleStreamableHttpStream(clientSocket);
+        HandleStreamableHttpStream(clientSocket, origin);
     }
     else if (method == "DELETE" && (path == "/mcp" || path == "/mcp/")) {
         // Stateless server: clients cannot terminate sessions explicitly.
@@ -616,7 +603,7 @@ void MCPHttpServer::HandleHttpRequest(SOCKET clientSocket, const std::string& re
              (path == "/message" || path == "/" || path == "/messages" ||
               path == "/rpc" || path == "/rpc/")) {
         // 鏀寔澶氱 POST 璺緞锛?, /message, /messages
-        HandlePostMessage(clientSocket, body);
+        HandlePostMessage(clientSocket, body, origin);
     }
     else if (method == "GET" && path == "/") {
         // 鍋ュ悍妫€鏌?
@@ -638,19 +625,21 @@ void MCPHttpServer::HandleHttpRequest(SOCKET clientSocket, const std::string& re
     }
 }
 
-void MCPHttpServer::HandleSSE(SOCKET clientSocket) {
+void MCPHttpServer::HandleSSE(SOCKET clientSocket, const std::string& origin) {
     // 鍙戦€?SSE 鍝嶅簲澶?
-    std::string headers = 
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Type: text/event-stream; charset=utf-8\r\n"
-        "Cache-Control: no-cache\r\n"
-        "Access-Control-Allow-Origin: *\r\n"
-        "Connection: keep-alive\r\n"
-        "\r\n";
+    std::ostringstream headerStream;
+    headerStream << "HTTP/1.1 200 OK\r\n"
+                 << "Content-Type: text/event-stream; charset=utf-8\r\n"
+                 << "Cache-Control: no-cache\r\n";
+    if (!origin.empty()) {
+        headerStream << "Access-Control-Allow-Origin: " << origin << "\r\n"
+                     << "Vary: Origin\r\n";
+    }
+    headerStream << "Connection: keep-alive\r\n\r\n";
+    const std::string headers = headerStream.str();
 
     if (!SendAll(clientSocket, headers)) {
         Logger::Error("Failed to send SSE headers");
-        closesocket(clientSocket);
         return;
     }
 
@@ -663,7 +652,6 @@ void MCPHttpServer::HandleSSE(SOCKET clientSocket) {
         std::lock_guard<std::mutex> lock(m_sseSendMutex);
         if (!SendAll(clientSocket, endpointEvent)) {
             Logger::Error("Failed to send SSE endpoint event");
-            closesocket(clientSocket);
             return;
         }
     }
@@ -781,17 +769,19 @@ void MCPHttpServer::HandleSSE(SOCKET clientSocket) {
         std::lock_guard<std::mutex> lock(m_sseClientSocketsMutex);
         m_sseClientSockets.erase(clientSocket);
     }
-    closesocket(clientSocket);
 }
 
-void MCPHttpServer::HandlePostMessage(SOCKET clientSocket, const std::string& body) {
+void MCPHttpServer::HandlePostMessage(SOCKET clientSocket, const std::string& body,
+                                      const std::string& origin) {
     Logger::Debug("POST body received: " + body);
 
     try {
         [[maybe_unused]] const auto parsed = json::parse(body);
     } catch (const json::exception&) {
         Logger::Error("Failed to parse JSON body");
-        SendHttpResponse(clientSocket, 400, "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,\"message\":\"Parse error\"}}");
+        SendHttpResponse(clientSocket, 400,
+                         "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,\"message\":\"Parse error\"}}",
+                         "application/json", origin);
         return;
     }
 
@@ -799,7 +789,9 @@ void MCPHttpServer::HandlePostMessage(SOCKET clientSocket, const std::string& bo
     bool hasRequestId = false;
     if (!ParseJsonRpcRequest(body, method, requestId, hasRequestId)) {
         Logger::Error("Invalid JSON-RPC request");
-        SendHttpResponse(clientSocket, 400, "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Invalid Request\"}}");
+        SendHttpResponse(clientSocket, 400,
+                         "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Invalid Request\"}}",
+                         "application/json", origin);
         return;
     }
 
@@ -817,19 +809,19 @@ void MCPHttpServer::HandlePostMessage(SOCKET clientSocket, const std::string& bo
 
     // Notification (no id) or methods with no payload: 202 either way.
     if (!hasRequestId || response.empty()) {
-        SendHttpResponse(clientSocket, 202, "");
+        SendHttpResponse(clientSocket, 202, "", "application/json", origin);
         return;
     }
 
     if (hasSseClient) {
         // MCP SSE contract: ack the POST with 202, push response via SSE.
-        SendHttpResponse(clientSocket, 202, "");
+        SendHttpResponse(clientSocket, 202, "", "application/json", origin);
         BroadcastSSEEvent("message", response);
         Logger::Debug("Response dispatched via SSE: " + response);
     } else {
         // Fallback for plain HTTP clients (no SSE attached): reply inline.
         Logger::Debug("Inline reply (no SSE client): " + response);
-        SendHttpResponse(clientSocket, 200, response);
+        SendHttpResponse(clientSocket, 200, response, "application/json", origin);
     }
 }
 
@@ -1477,18 +1469,21 @@ void MCPHttpServer::HandleStreamableHttpPost(SOCKET clientSocket, const std::str
     SendHttpResponse(clientSocket, 200, response, "application/json", origin);
 }
 
-void MCPHttpServer::HandleStreamableHttpStream(SOCKET clientSocket) {
-    const std::string headers =
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Type: text/event-stream; charset=utf-8\r\n"
-        "Cache-Control: no-cache\r\n"
-        "Access-Control-Allow-Origin: *\r\n"
-        "Connection: keep-alive\r\n"
-        "\r\n";
+void MCPHttpServer::HandleStreamableHttpStream(SOCKET clientSocket,
+                                               const std::string& origin) {
+    std::ostringstream headerStream;
+    headerStream << "HTTP/1.1 200 OK\r\n"
+                 << "Content-Type: text/event-stream; charset=utf-8\r\n"
+                 << "Cache-Control: no-cache\r\n";
+    if (!origin.empty()) {
+        headerStream << "Access-Control-Allow-Origin: " << origin << "\r\n"
+                     << "Vary: Origin\r\n";
+    }
+    headerStream << "Connection: keep-alive\r\n\r\n";
+    const std::string headers = headerStream.str();
 
     if (!SendAll(clientSocket, headers)) {
         Logger::Error("[Streamable HTTP] Failed to send stream headers");
-        closesocket(clientSocket);
         return;
     }
 
@@ -1538,7 +1533,6 @@ void MCPHttpServer::HandleStreamableHttpStream(SOCKET clientSocket) {
         std::lock_guard<std::mutex> lock(m_sseClientSocketsMutex);
         m_sseClientSockets.erase(clientSocket);
     }
-    closesocket(clientSocket);
 }
 
 } // namespace MCP
